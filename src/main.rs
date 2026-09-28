@@ -11,6 +11,7 @@ mod transform;
 mod pyramid;
 mod cone;
 mod plane;
+mod object;
 mod triangle;
 
 use minifb::{Key, Window, WindowOptions};
@@ -30,6 +31,7 @@ use crate::plane::Plane;
 use crate::triangle::Triangle;
 use crate::cylinder::Cylinder;
 use crate::transform::Transform;
+use crate::object::Object;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -297,7 +299,8 @@ fn main() {
     let green = Material::new(Color::new(34, 139, 34), 10.0, [0.9, 0.1, 0.0]);
 
     let objects: Vec<Box<dyn RayIntersect>> = vec![
-        Box::new(Plane {
+        Box::new(Object {
+            shape: Box::new(Plane),
             transform: Transform::new(
                 Vec3::new(0.0, -1.5, 0.0),
                 Vec3::new(0.0, 0.0, 0.0),
@@ -306,7 +309,8 @@ fn main() {
             material: base_material.clone(),
         }),
         // Tronco (Cilindro)
-        Box::new(Cylinder {
+        Box::new(Object {
+            shape: Box::new(Cylinder),
             transform: Transform::new(
                 Vec3::new(0.0, -0.5, 0.0),
                 Vec3::new(0.0, 0.0, 0.0),
@@ -315,7 +319,8 @@ fn main() {
             material: brown.clone(),
         }),
         // Hojas (Cono)
-        Box::new(Cone {
+        Box::new(Object {
+            shape: Box::new(Cone),
             transform: Transform::new(
                 Vec3::new(0.0, 1.5, 0.0),
                 Vec3::new(0.0, 0.0, 0.0),
