@@ -1,27 +1,36 @@
 use crate::ray_intersect::{Intersect, Material, RayIntersect};
-use nalgebra_glm::{Vec3};
+use crate::transform::Transform;
+use nalgebra_glm::{inverse, transpose, vec4, vec4_to_vec3, Vec3};
 
 pub struct Cube {
-    pub center: Vec3,
-    pub size: f32,
+    pub transform: Transform,
     pub material: Material,
 }
 
 impl RayIntersect for Cube {
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<Intersect> {
-        let half_size = self.size / 2.0;
-        let min_bound = self.center - Vec3::new(half_size, half_size, half_size);
-        let max_bound = self.center + Vec3::new(half_size, half_size, half_size);
+        let model_matrix = self.transform.matrix();
+        let inverse_matrix = inverse(&model_matrix);
 
-        let mut t_min = (min_bound.x - ray_origin.x) / ray_direction.x;
-        let mut t_max = (max_bound.x - ray_origin.x) / ray_direction.x;
+        // Convert rays to object space
+        let local_origin = vec4_to_vec3(&(inverse_matrix * vec4(ray_origin.x, ray_origin.y, ray_origin.z, 1.0)));
+        let local_direction = vec4_to_vec3(&(inverse_matrix * vec4(ray_direction.x, ray_direction.y, ray_direction.z, 0.0)));
+        
+        let local_dir_norm = local_direction.normalize();
+
+        // Unit cube bounds [-0.5, 0.5]
+        let min_bound = Vec3::new(-0.5, -0.5, -0.5);
+        let max_bound = Vec3::new(0.5, 0.5, 0.5);
+
+        let mut t_min = (min_bound.x - local_origin.x) / local_dir_norm.x;
+        let mut t_max = (max_bound.x - local_origin.x) / local_dir_norm.x;
 
         if t_min > t_max {
             std::mem::swap(&mut t_min, &mut t_max);
         }
 
-        let mut ty_min = (min_bound.y - ray_origin.y) / ray_direction.y;
-        let mut ty_max = (max_bound.y - ray_origin.y) / ray_direction.y;
+        let mut ty_min = (min_bound.y - local_origin.y) / local_dir_norm.y;
+        let mut ty_max = (max_bound.y - local_origin.y) / local_dir_norm.y;
 
         if ty_min > ty_max {
             std::mem::swap(&mut ty_min, &mut ty_max);
@@ -38,8 +47,8 @@ impl RayIntersect for Cube {
             t_max = ty_max;
         }
 
-        let mut tz_min = (min_bound.z - ray_origin.z) / ray_direction.z;
-        let mut tz_max = (max_bound.z - ray_origin.z) / ray_direction.z;
+        let mut tz_min = (min_bound.z - local_origin.z) / local_dir_norm.z;
+        let mut tz_max = (max_bound.z - local_origin.z) / local_dir_norm.z;
 
         if tz_min > tz_max {
             std::mem::swap(&mut tz_min, &mut tz_max);
@@ -56,41 +65,46 @@ impl RayIntersect for Cube {
             return None;
         }
 
-        let point = ray_origin + ray_direction * t_min;
+        let local_point = local_origin + local_dir_norm * t_min;
 
-        let p = point - self.center;
-        let p_abs = Vec3::new(p.x.abs(), p.y.abs(), p.z.abs());
-        
-        let mut normal = Vec3::new(0.0, 0.0, 0.0);
+        // Normal computation in local space
+        let p_abs = Vec3::new(local_point.x.abs(), local_point.y.abs(), local_point.z.abs());
+        let mut local_normal = Vec3::new(0.0, 0.0, 0.0);
         if p_abs.x > p_abs.y && p_abs.x > p_abs.z {
-            normal.x = p.x.signum();
+            local_normal.x = local_point.x.signum();
         } else if p_abs.y > p_abs.x && p_abs.y > p_abs.z {
-            normal.y = p.y.signum();
+            local_normal.y = local_point.y.signum();
         } else {
-            normal.z = p.z.signum();
+            local_normal.z = local_point.z.signum();
         }
 
+        // Texture coordinates (uv mappings based on face)
         let u;
         let v;
-        if normal.x.abs() > 0.5 {
-            u = (p.z + half_size) / self.size;
-            v = (p.y + half_size) / self.size;
-        } else if normal.y.abs() > 0.5 {
-            u = (p.x + half_size) / self.size;
-            v = (p.z + half_size) / self.size;
+        if local_normal.x.abs() > 0.0 {
+            u = local_point.z + 0.5;
+            v = local_point.y + 0.5;
+        } else if local_normal.y.abs() > 0.0 {
+            u = local_point.x + 0.5;
+            v = local_point.z + 0.5;
         } else {
-            u = (p.x + half_size) / self.size;
-            v = (p.y + half_size) / self.size;
+            u = local_point.x + 0.5;
+            v = local_point.y + 0.5;
         }
 
+        // Convert back to world space
+        let world_point = vec4_to_vec3(&(model_matrix * vec4(local_point.x, local_point.y, local_point.z, 1.0)));
+        let normal_matrix = transpose(&inverse_matrix);
+        let world_normal = vec4_to_vec3(&(normal_matrix * vec4(local_normal.x, local_normal.y, local_normal.z, 0.0))).normalize();
+        let distance = nalgebra_glm::magnitude(&(world_point - ray_origin));
+
         Some(Intersect {
-            point, 
-            normal, 
-            distance: t_min,
+            point: world_point,
+            normal: world_normal,
+            distance,
             material: self.material.clone(),
             u,
             v,
         })
     }
-
 }

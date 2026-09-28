@@ -7,6 +7,7 @@ mod ray_intersect;
 mod sphere;
 mod cube;
 mod texture;
+mod transform;
 
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
@@ -19,6 +20,7 @@ use crate::framebuffer::Framebuffer;
 use crate::light::Light;
 use crate::ray_intersect::{Intersect, Material, RayIntersect};
 use crate::cube::Cube;
+use crate::transform::Transform;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -287,15 +289,39 @@ fn main() {
     let water_mask = std::sync::Arc::new(texture::Texture::new("assets/WaterDropletsMixedBubbled001_ALPHAMASKED_2K.png"));
     let water_normal = std::sync::Arc::new(texture::Texture::new("assets/WaterDropletsMixedBubbled001_NRM_2K.jpg"));
 
+    let base_material = Material::new(Color::new(199, 159, 224), 250.0, [0.6, 1.0, 0.1])
+        .with_texture(tile_texture.clone())
+        .with_normal_map(normal_map.clone())
+        .with_specular_map(specular_map.clone())
+        .with_overlay(water_mask.clone(), water_normal.clone());
+
     let objects: Vec<Box<dyn RayIntersect>> = vec![
+        // Cubo central (rotado y escalado)
         Box::new(Cube {
-            center: Vec3::new(0.0, 0.0, 0.0),
-            size: 2.0,
-            material: Material::new(Color::new(199, 159, 224), 250.0, [0.6, 1.0, 0.1])
-                .with_texture(tile_texture)
-                .with_normal_map(normal_map)
-                .with_specular_map(specular_map)
-                .with_overlay(water_mask, water_normal),
+            transform: Transform::new(
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(PI / 6.0, PI / 4.0, 0.0),
+                Vec3::new(1.5, 1.5, 1.5),
+            ),
+            material: base_material.clone(),
+        }),
+        // Cubo izquierdo
+        Box::new(Cube {
+            transform: Transform::new(
+                Vec3::new(-3.0, 0.5, -1.0),
+                Vec3::new(0.0, PI / 3.0, 0.0),
+                Vec3::new(1.0, 2.0, 1.0),
+            ),
+            material: base_material.clone(),
+        }),
+        // Cubo derecho
+        Box::new(Cube {
+            transform: Transform::new(
+                Vec3::new(3.0, -0.5, 1.0),
+                Vec3::new(PI / 4.0, 0.0, PI / 4.0),
+                Vec3::new(1.0, 1.0, 1.0),
+            ),
+            material: base_material,
         }),
     ];
 
