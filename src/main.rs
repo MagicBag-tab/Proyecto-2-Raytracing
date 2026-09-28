@@ -10,6 +10,7 @@ mod texture;
 mod transform;
 mod pyramid;
 mod cone;
+mod plane;
 
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
@@ -24,6 +25,7 @@ use crate::ray_intersect::{Intersect, Material, RayIntersect};
 use crate::cube::Cube;
 use crate::pyramid::Pyramid;
 use crate::cone::Cone;
+use crate::plane::Plane;
 use crate::transform::Transform;
 
 const WIDTH: usize = 800;
@@ -300,6 +302,14 @@ fn main() {
         .with_overlay(water_mask.clone(), water_normal.clone());
 
     let objects: Vec<Box<dyn RayIntersect>> = vec![
+        Box::new(Plane {
+            transform: Transform::new(
+                Vec3::new(0.0, -1.5, 0.0),
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(10.0, 1.0, 10.0),
+            ),
+            material: base_material.clone(),
+        }),
         Box::new(Cube {
             transform: Transform::new(
                 Vec3::new(0.0, 0.0, 0.0),
