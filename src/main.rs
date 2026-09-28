@@ -251,33 +251,22 @@ pub fn render(
         let x = i % width;
         let y = i / width;
 
-        let mut total_r = 0.0;
-        let mut total_g = 0.0;
-        let mut total_b = 0.0;
+        let screen_x = (2.0 * x as f32) / width_f - 1.0;
+        let screen_y = -(2.0 * y as f32) / height_f + 1.0;
 
-        for offset_y in [0.25, 0.75].iter() {
-            for offset_x in [0.25, 0.75].iter() {
-                let screen_x = (2.0 * (x as f32 + offset_x)) / width_f - 1.0;
-                let screen_y = -(2.0 * (y as f32 + offset_y)) / height_f + 1.0;
+        let screen_x = screen_x * aspect_ratio * perspective_scale;
+        let screen_y = screen_y * perspective_scale;
 
-                let screen_x = screen_x * aspect_ratio * perspective_scale;
-                let screen_y = screen_y * perspective_scale;
+        let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
+        let ray_direction = camera.basis_change(&ray_direction);
 
-                let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
-                let ray_direction = camera.basis_change(&ray_direction);
-
-                let sample_color = cast_ray(&camera.eye, &ray_direction, objects, light, 0, render_mode);
-                let hex = sample_color.to_hex();
-                total_r += ((hex >> 16) & 0xFF) as f32;
-                total_g += ((hex >> 8) & 0xFF) as f32;
-                total_b += (hex & 0xFF) as f32;
-            }
-        }
-
-        let r = (total_r / 4.0) as u8;
-        let g = (total_g / 4.0) as u8;
-        let b = (total_b / 4.0) as u8;
-        *pixel = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        let sample_color = cast_ray(&camera.eye, &ray_direction, objects, light, 0, render_mode);
+        let hex = sample_color.to_hex();
+        
+        let r = (hex >> 16) & 0xFF;
+        let g = (hex >> 8) & 0xFF;
+        let b = hex & 0xFF;
+        *pixel = r << 16 | g << 8 | b;
     });
 }
 
