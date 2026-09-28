@@ -1,37 +1,27 @@
-mod camera;
-mod color;
-mod cylinder;
-mod framebuffer;
-mod light;
-mod ray_intersect;
-mod sphere;
-mod cube;
-mod texture;
-mod transform;
-mod pyramid;
-mod cone;
-mod plane;
-mod object;
-mod triangle;
+use crate::materials::texture::Texture;
+
+mod core;
+mod materials;
+mod shapes;
 
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
 use std::f32::consts::PI;
 use std::time::Duration;
 
-use crate::camera::Camera;
-use crate::color::Color;
-use crate::framebuffer::Framebuffer;
-use crate::light::Light;
-use crate::ray_intersect::{Intersect, Material, RayIntersect};
-use crate::cube::Cube;
-use crate::pyramid::Pyramid;
-use crate::cone::Cone;
-use crate::plane::Plane;
-use crate::triangle::Triangle;
-use crate::cylinder::Cylinder;
-use crate::transform::Transform;
-use crate::object::Object;
+use crate::core::camera::Camera;
+use crate::materials::color::Color;
+use crate::core::framebuffer::Framebuffer;
+use crate::core::light::Light;
+use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
+use crate::shapes::cube::Cube;
+use crate::shapes::pyramid::Pyramid;
+use crate::shapes::cone::Cone;
+use crate::shapes::plane::Plane;
+use crate::shapes::triangle::Triangle;
+use crate::shapes::cylinder::Cylinder;
+use crate::core::transform::Transform;
+use crate::core::object::Object;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -282,12 +272,12 @@ fn main() {
 
     let mut window = Window::new("Lakitu", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
 
-    let tile_texture = std::sync::Arc::new(texture::Texture::new("assets/TilesSquarePoolMixed001_COL_2K.jpg"));
-    let normal_map = std::sync::Arc::new(texture::Texture::new("assets/TilesSquarePoolMixed001_NRM_2K.jpg"));
-    let specular_map = std::sync::Arc::new(texture::Texture::new("assets/TilesSquarePoolMixed001_REFL_2K.jpg"));
+    let tile_texture = std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_COL_2K.jpg"));
+    let normal_map = std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_NRM_2K.jpg"));
+    let specular_map = std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_REFL_2K.jpg"));
 
-    let water_mask = std::sync::Arc::new(texture::Texture::new("assets/WaterDropletsMixedBubbled001_ALPHAMASKED_2K.png"));
-    let water_normal = std::sync::Arc::new(texture::Texture::new("assets/WaterDropletsMixedBubbled001_NRM_2K.jpg"));
+    let water_mask = std::sync::Arc::new(Texture::new("assets/WaterDropletsMixedBubbled001_ALPHAMASKED_2K.png"));
+    let water_normal = std::sync::Arc::new(Texture::new("assets/WaterDropletsMixedBubbled001_NRM_2K.jpg"));
 
     let base_material = Material::new(Color::new(199, 159, 224), 250.0, [0.6, 1.0, 0.1])
         .with_texture(tile_texture.clone())
@@ -381,3 +371,4 @@ fn main() {
         std::thread::sleep(frame_delay);
     }
 }
+

@@ -1,5 +1,5 @@
 use nalgebra_glm::Vec3;
-use crate::object::Shape;
+use crate::core::object::Shape;
 
 pub struct Cylinder;
 

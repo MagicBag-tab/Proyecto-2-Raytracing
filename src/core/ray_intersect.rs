@@ -1,8 +1,8 @@
-use crate::color::Color;
+use crate::materials::color::Color;
 use nalgebra_glm::Vec3;
 
 use std::sync::Arc;
-use crate::texture::Texture;
+use crate::materials::texture::Texture;
 
 #[derive(Debug, Clone)]
 pub struct Material {

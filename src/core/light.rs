@@ -1,4 +1,4 @@
-use crate::color::Color;
+use crate::materials::color::Color;
 use nalgebra_glm::Vec3;
 
 pub struct Light {

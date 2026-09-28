@@ -1,5 +1,5 @@
-use crate::ray_intersect::{Intersect, Material, RayIntersect};
-use crate::transform::Transform;
+use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
+use crate::core::transform::Transform;
 use nalgebra_glm::{inverse, transpose, vec4, vec4_to_vec3, Vec3};
 
 pub trait Shape: Send + Sync {
