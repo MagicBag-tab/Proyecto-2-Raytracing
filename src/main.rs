@@ -11,6 +11,7 @@ mod transform;
 mod pyramid;
 mod cone;
 mod plane;
+mod triangle;
 
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
@@ -26,6 +27,8 @@ use crate::cube::Cube;
 use crate::pyramid::Pyramid;
 use crate::cone::Cone;
 use crate::plane::Plane;
+use crate::triangle::Triangle;
+use crate::cylinder::Cylinder;
 use crate::transform::Transform;
 
 const WIDTH: usize = 800;
@@ -290,6 +293,9 @@ fn main() {
         .with_specular_map(specular_map.clone())
         .with_overlay(water_mask.clone(), water_normal.clone());
 
+    let brown = Material::new(Color::new(139, 69, 19), 50.0, [0.8, 0.2, 0.0]);
+    let green = Material::new(Color::new(34, 139, 34), 10.0, [0.9, 0.1, 0.0]);
+
     let objects: Vec<Box<dyn RayIntersect>> = vec![
         Box::new(Plane {
             transform: Transform::new(
@@ -299,29 +305,23 @@ fn main() {
             ),
             material: base_material.clone(),
         }),
-        Box::new(Cube {
+        // Tronco (Cilindro)
+        Box::new(Cylinder {
             transform: Transform::new(
+                Vec3::new(0.0, -0.5, 0.0),
                 Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(PI / 6.0, PI / 4.0, 0.0),
-                Vec3::new(1.5, 1.5, 1.5),
+                Vec3::new(0.5, 2.0, 0.5),
             ),
-            material: base_material.clone(),
+            material: brown.clone(),
         }),
+        // Hojas (Cono)
         Box::new(Cone {
             transform: Transform::new(
-                Vec3::new(-3.0, 0.5, -1.0),
-                Vec3::new(0.0, PI / 3.0, 0.0),
-                Vec3::new(1.0, 2.0, 1.0),
+                Vec3::new(0.0, 1.5, 0.0),
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(2.0, 2.0, 2.0),
             ),
-            material: base_material.clone(),
-        }),
-        Box::new(Pyramid {
-            transform: Transform::new(
-                Vec3::new(3.0, -0.5, 1.0),
-                Vec3::new(PI / 4.0, 0.0, PI / 4.0),
-                Vec3::new(1.0, 1.0, 1.0),
-            ),
-            material: base_material,
+            material: green.clone(),
         }),
     ];
 
