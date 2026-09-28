@@ -12,13 +12,11 @@ impl RayIntersect for Cube {
         let model_matrix = self.transform.matrix();
         let inverse_matrix = inverse(&model_matrix);
 
-        // Convert rays to object space
         let local_origin = vec4_to_vec3(&(inverse_matrix * vec4(ray_origin.x, ray_origin.y, ray_origin.z, 1.0)));
         let local_direction = vec4_to_vec3(&(inverse_matrix * vec4(ray_direction.x, ray_direction.y, ray_direction.z, 0.0)));
         
         let local_dir_norm = local_direction.normalize();
 
-        // Unit cube bounds [-0.5, 0.5]
         let min_bound = Vec3::new(-0.5, -0.5, -0.5);
         let max_bound = Vec3::new(0.5, 0.5, 0.5);
 
@@ -67,7 +65,6 @@ impl RayIntersect for Cube {
 
         let local_point = local_origin + local_dir_norm * t_min;
 
-        // Normal computation in local space
         let p_abs = Vec3::new(local_point.x.abs(), local_point.y.abs(), local_point.z.abs());
         let mut local_normal = Vec3::new(0.0, 0.0, 0.0);
         if p_abs.x > p_abs.y && p_abs.x > p_abs.z {
@@ -78,7 +75,6 @@ impl RayIntersect for Cube {
             local_normal.z = local_point.z.signum();
         }
 
-        // Texture coordinates (uv mappings based on face)
         let u;
         let v;
         if local_normal.x.abs() > 0.0 {
@@ -92,7 +88,6 @@ impl RayIntersect for Cube {
             v = local_point.y + 0.5;
         }
 
-        // Convert back to world space
         let world_point = vec4_to_vec3(&(model_matrix * vec4(local_point.x, local_point.y, local_point.z, 1.0)));
         let normal_matrix = transpose(&inverse_matrix);
         let world_normal = vec4_to_vec3(&(normal_matrix * vec4(local_normal.x, local_normal.y, local_normal.z, 0.0))).normalize();

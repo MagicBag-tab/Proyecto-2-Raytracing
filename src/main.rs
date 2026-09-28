@@ -296,7 +296,6 @@ fn main() {
         .with_overlay(water_mask.clone(), water_normal.clone());
 
     let objects: Vec<Box<dyn RayIntersect>> = vec![
-        // Cubo central (rotado y escalado)
         Box::new(Cube {
             transform: Transform::new(
                 Vec3::new(0.0, 0.0, 0.0),
@@ -305,7 +304,6 @@ fn main() {
             ),
             material: base_material.clone(),
         }),
-        // Cubo izquierdo
         Box::new(Cube {
             transform: Transform::new(
                 Vec3::new(-3.0, 0.5, -1.0),
@@ -314,7 +312,6 @@ fn main() {
             ),
             material: base_material.clone(),
         }),
-        // Cubo derecho
         Box::new(Cube {
             transform: Transform::new(
                 Vec3::new(3.0, -0.5, 1.0),
