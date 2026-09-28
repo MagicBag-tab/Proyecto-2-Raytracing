@@ -1134,6 +1134,7 @@ dependencies = [
  "image",
  "minifb",
  "nalgebra-glm",
+ "rayon",
 ]
 
 [[package]]

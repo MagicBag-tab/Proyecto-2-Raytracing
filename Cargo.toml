@@ -9,6 +9,7 @@ edition = "2021"
 nalgebra-glm = "0.18.0"
 minifb = "0.26.0"
 image = "0.25.10"
+rayon = "1.12.0"
 
 [profile.dev]
 opt-level = 3
