@@ -8,6 +8,7 @@ mod sphere;
 mod cube;
 mod texture;
 mod transform;
+mod pyramid;
 
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
@@ -20,6 +21,7 @@ use crate::framebuffer::Framebuffer;
 use crate::light::Light;
 use crate::ray_intersect::{Intersect, Material, RayIntersect};
 use crate::cube::Cube;
+use crate::pyramid::Pyramid;
 use crate::transform::Transform;
 
 const WIDTH: usize = 800;
@@ -312,7 +314,7 @@ fn main() {
             ),
             material: base_material.clone(),
         }),
-        Box::new(Cube {
+        Box::new(Pyramid {
             transform: Transform::new(
                 Vec3::new(3.0, -0.5, 1.0),
                 Vec3::new(PI / 4.0, 0.0, PI / 4.0),
