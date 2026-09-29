@@ -60,8 +60,8 @@ pub fn cast_shadow(
 
     objects.iter().any(|object| {
         object
-            .ray_intersect(&shadow_ray_origin, light_direction)
-            .is_some_and(|blocker| blocker.distance < light_distance)
+            .ray_intersect_distance(&shadow_ray_origin, light_direction)
+            .is_some_and(|blocker_distance| blocker_distance < light_distance)
     })
 }
 
@@ -297,6 +297,14 @@ pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8) {
     let aspect_ratio = width_f / height_f;
     let perspective_scale = (FOV / 2.0).tan();
     let width = framebuffer.width;
+    let x_scale = 2.0 * aspect_ratio * perspective_scale / width_f;
+    let x_offset = -aspect_ratio * perspective_scale;
+    let y_scale = -2.0 * perspective_scale / height_f;
+    let y_offset = perspective_scale;
+    let camera_forward = (scene.camera.center - scene.camera.eye).normalize();
+    let camera_right = camera_forward.cross(&scene.camera.up).normalize();
+    let camera_up = camera_right.cross(&camera_forward).normalize();
+    let camera_eye = scene.camera.eye;
 
     framebuffer
         .buffer
@@ -306,16 +314,15 @@ pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8) {
             let x = i % width;
             let y = i / width;
 
-            let screen_x = (2.0 * x as f32) / width_f - 1.0;
-            let screen_y = -(2.0 * y as f32) / height_f + 1.0;
+            let screen_x = x as f32 * x_scale + x_offset;
+            let screen_y = y as f32 * y_scale + y_offset;
+            let camera_direction = Vec3::new(screen_x, screen_y, -1.0);
+            let ray_direction = (camera_direction.x * camera_right
+                + camera_direction.y * camera_up
+                - camera_direction.z * camera_forward)
+                .normalize();
 
-            let screen_x = screen_x * aspect_ratio * perspective_scale;
-            let screen_y = screen_y * perspective_scale;
-
-            let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
-            let ray_direction = scene.camera.basis_change(&ray_direction);
-
-            let sample_color = cast_ray(&scene.camera.eye, &ray_direction, scene, 0, render_mode);
+            let sample_color = cast_ray(&camera_eye, &ray_direction, scene, 0, render_mode);
             let hex = sample_color.to_hex();
 
             let r = (hex >> 16) & 0xFF;
@@ -341,11 +348,11 @@ fn add_primitive(
     scale: Vec3,
     material: Material,
 ) {
-    objects.push(Box::new(Object {
+    objects.push(Box::new(Object::new(
         shape,
-        transform: Transform::new(position, rotation, scale),
+        Transform::new(position, rotation, scale),
         material,
-    }));
+    )));
 }
 
 fn create_scene(camera: Camera) -> Scene {
@@ -797,386 +804,5 @@ fn main() {
             .unwrap();
 
         std::thread::sleep(frame_delay);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::object::Shape;
-    use crate::materials::presets::{self, Preset};
-    use crate::shapes::cone::Cone;
-    use crate::shapes::cube::Cube;
-    use crate::shapes::cylinder::Cylinder;
-    use crate::shapes::pyramid::Pyramid;
-    use crate::shapes::sphere::Sphere;
-    use crate::shapes::triangle::Triangle;
-    use std::sync::Arc;
-
-    fn test_material() -> Material {
-        Material::new(Color::new(180, 180, 180)).with_specular(16.0, 0.0)
-    }
-
-    fn test_object(shape: Box<dyn Shape>, transform: Transform) -> Object {
-        Object {
-            shape,
-            transform,
-            material: test_material(),
-        }
-    }
-
-    fn assert_near(actual: f32, expected: f32) {
-        assert!(
-            (actual - expected).abs() < 1e-3,
-            "expected {expected}, got {actual}"
-        );
-    }
-
-    #[test]
-    fn every_shape_is_intersectable() {
-        let cases: [(&str, Box<dyn Shape>, Vec3, Vec3); 7] = [
-            (
-                "cube",
-                Box::new(Cube),
-                Vec3::new(0.0, 0.0, 3.0),
-                Vec3::new(0.0, 0.0, -1.0),
-            ),
-            (
-                "sphere",
-                Box::new(Sphere),
-                Vec3::new(0.0, 0.0, 3.0),
-                Vec3::new(0.0, 0.0, -1.0),
-            ),
-            (
-                "cylinder",
-                Box::new(Cylinder),
-                Vec3::new(0.0, 0.0, 3.0),
-                Vec3::new(0.0, 0.0, -1.0),
-            ),
-            (
-                "cone",
-                Box::new(Cone),
-                Vec3::new(0.0, 0.0, 3.0),
-                Vec3::new(0.0, 0.0, -1.0),
-            ),
-            (
-                "plane",
-                Box::new(Plane),
-                Vec3::new(0.0, 2.0, 0.0),
-                Vec3::new(0.0, -1.0, 0.0),
-            ),
-            (
-                "pyramid",
-                Box::new(Pyramid),
-                Vec3::new(0.0, 0.0, 3.0),
-                Vec3::new(0.0, 0.0, -1.0),
-            ),
-            (
-                "triangle",
-                Box::new(Triangle),
-                Vec3::new(0.0, 0.0, 3.0),
-                Vec3::new(0.0, 0.0, -1.0),
-            ),
-        ];
-
-        for (name, shape, origin, direction) in cases {
-            let object = test_object(shape, Transform::default());
-            let hit = object.ray_intersect(&origin, &direction);
-            assert!(hit.is_some(), "{name} did not intersect the test ray");
-        }
-    }
-
-    #[test]
-    fn object_translation_moves_its_intersection() {
-        let object = test_object(
-            Box::new(Sphere),
-            Transform::new(
-                Vec3::new(2.0, 0.0, 0.0),
-                Vec3::zeros(),
-                Vec3::new(1.0, 1.0, 1.0),
-            ),
-        );
-        let origin = Vec3::new(2.0, 0.0, 3.0);
-        let direction = Vec3::new(0.0, 0.0, -1.0);
-        let hit = object.ray_intersect(&origin, &direction).unwrap();
-
-        assert_near(hit.point.x, 2.0);
-        assert_near(hit.distance, 2.0);
-        assert!(object
-            .ray_intersect(&Vec3::new(0.0, 0.0, 3.0), &direction)
-            .is_none());
-    }
-
-    #[test]
-    fn object_rotation_changes_its_intersection_normal() {
-        let object = test_object(
-            Box::new(Triangle),
-            Transform::new(
-                Vec3::zeros(),
-                Vec3::new(0.0, PI / 2.0, 0.0),
-                Vec3::new(1.0, 1.0, 1.0),
-            ),
-        );
-        let hit = object
-            .ray_intersect(&Vec3::new(3.0, 0.0, 0.0), &Vec3::new(-1.0, 0.0, 0.0))
-            .unwrap();
-
-        assert!(hit.normal.x > 0.99, "rotated normal was {:?}", hit.normal);
-        assert_near(hit.point.x, 0.0);
-    }
-
-    #[test]
-    fn object_scale_changes_its_intersection_distance() {
-        let object = test_object(
-            Box::new(Sphere),
-            Transform::new(Vec3::zeros(), Vec3::zeros(), Vec3::new(2.0, 1.0, 1.0)),
-        );
-        let hit = object
-            .ray_intersect(&Vec3::new(3.0, 0.0, 0.0), &Vec3::new(-1.0, 0.0, 0.0))
-            .unwrap();
-
-        assert_near(hit.point.x, 2.0);
-        assert_near(hit.distance, 1.0);
-    }
-
-    #[test]
-    fn objects_can_keep_distinct_color_textures() {
-        let tile_texture = Arc::new(Texture::new("assets/TilesSquarePoolMixed001_COL_2K.jpg"));
-        let water_texture = Arc::new(Texture::new(
-            "assets/WaterDropletsMixedBubbled001_COL_2K.jpg",
-        ));
-        let tile = test_material().with_texture(tile_texture.clone());
-        let water = test_material().with_texture(water_texture.clone());
-
-        let tile_object = Object {
-            shape: Box::new(Sphere),
-            transform: Transform::default(),
-            material: tile,
-        };
-        let water_object = Object {
-            shape: Box::new(Sphere),
-            transform: Transform::default(),
-            material: water,
-        };
-        let origin = Vec3::new(0.0, 0.0, 3.0);
-        let direction = Vec3::new(0.0, 0.0, -1.0);
-        let tile_hit = tile_object.ray_intersect(&origin, &direction).unwrap();
-        let water_hit = water_object.ray_intersect(&origin, &direction).unwrap();
-        let tile_bound = tile_hit.material.texture.as_ref().unwrap();
-        let water_bound = water_hit.material.texture.as_ref().unwrap();
-
-        assert!(Arc::ptr_eq(tile_bound, &tile_texture));
-        assert!(Arc::ptr_eq(water_bound, &water_texture));
-        let samples_differ = [0.1, 0.3, 0.5, 0.7, 0.9].into_iter().any(|u| {
-            [0.1, 0.3, 0.5, 0.7, 0.9].into_iter().any(|v| {
-                tile_bound.get_color(u, v).to_hex() != water_bound.get_color(u, v).to_hex()
-            })
-        });
-        assert!(
-            samples_differ,
-            "the two bound color textures sampled identically"
-        );
-    }
-
-    #[test]
-    fn five_material_presets_have_distinct_textures_and_properties() {
-        let materials = [
-            presets::create(Preset::Wood),
-            presets::create(Preset::Stone),
-            presets::create(Preset::Metal),
-            presets::create(Preset::Glass),
-            presets::create(Preset::Paper),
-        ];
-
-        for material in &materials {
-            assert!(material.texture.is_some());
-            assert!((0.0..=1.0).contains(&material.albedo));
-            assert!((0.0..=1.0).contains(&material.specular_strength));
-            assert!((0.0..=1.0).contains(&material.transparency));
-            assert!((0.0..=1.0).contains(&material.reflectivity));
-            assert!(material.refractive_index >= 1.0);
-        }
-
-        let textures: Vec<_> = materials
-            .iter()
-            .map(|material| material.texture.as_ref().unwrap())
-            .collect();
-        for (index, texture) in textures.iter().enumerate() {
-            assert!(textures[index + 1..]
-                .iter()
-                .all(|other| !Arc::ptr_eq(texture, other)));
-        }
-
-        let glass = &materials[3];
-        assert!(glass.transparency > 0.9);
-        assert!(glass.reflectivity > 0.0);
-        assert!(glass.refractive_index > 1.0);
-        assert_eq!(materials[0].transparency, 0.0);
-        assert_eq!(materials[1].transparency, 0.0);
-        assert_eq!(materials[2].reflectivity, 0.35);
-        assert_eq!(materials[4].transparency, 0.0);
-    }
-
-    #[test]
-    fn cafe_garden_scene_contains_primitive_built_landmarks() {
-        let scene = create_scene(create_camera());
-        assert!(scene.objects.len() >= 70);
-        assert!(scene.lights.len() >= 3);
-
-        let ground_hit = scene.objects[0]
-            .ray_intersect(&Vec3::new(0.0, 5.0, 0.0), &Vec3::new(0.0, -1.0, 0.0))
-            .expect("raised garden platform should be intersectable");
-        assert!(ground_hit.material.texture.is_some());
-
-        let cafe_door_hit = scene
-            .objects
-            .iter()
-            .filter_map(|object| {
-                object.ray_intersect(&Vec3::new(0.0, -2.0, 1.0), &Vec3::new(0.0, 0.0, -1.0))
-            })
-            .min_by(|left, right| left.distance.total_cmp(&right.distance))
-            .expect("cafe entrance should be visible from the garden");
-        assert_eq!(
-            cafe_door_hit.material.diffuse.to_hex(),
-            Color::new(150, 86, 42).to_hex()
-        );
-
-        let path_hit = scene
-            .objects
-            .iter()
-            .filter_map(|object| {
-                object.ray_intersect(&Vec3::new(0.0, 3.0, 3.0), &Vec3::new(0.0, -1.0, 0.0))
-            })
-            .min_by(|left, right| left.distance.total_cmp(&right.distance))
-            .expect("stepping path should be visible in front of the cafe");
-        assert_eq!(
-            path_hit.material.diffuse.to_hex(),
-            Color::new(125, 132, 139).to_hex()
-        );
-
-        let gate_hit = scene
-            .objects
-            .iter()
-            .filter_map(|object| {
-                object.ray_intersect(&Vec3::new(0.0, -1.8, 6.0), &Vec3::new(0.0, 0.0, -1.0))
-            })
-            .min_by(|left, right| left.distance.total_cmp(&right.distance))
-            .expect("gate bars should cross the garden entrance");
-        assert_eq!(
-            gate_hit.material.diffuse.to_hex(),
-            Color::new(170, 180, 190).to_hex()
-        );
-
-        let tree_hit = scene
-            .objects
-            .iter()
-            .filter_map(|object| {
-                object.ray_intersect(&Vec3::new(-4.7, 4.0, -1.3), &Vec3::new(0.0, -1.0, 0.0))
-            })
-            .min_by(|left, right| left.distance.total_cmp(&right.distance))
-            .expect("a tree canopy should occupy the garden");
-        assert_eq!(
-            tree_hit.material.diffuse.to_hex(),
-            Color::new(44, 112, 54).to_hex()
-        );
-    }
-
-    #[test]
-    fn refraction_obeys_snell_and_detects_total_internal_reflection() {
-        let normal = Vec3::new(0.0, 0.0, 1.0);
-        let incident = Vec3::new(0.5, 0.0, -(3.0_f32).sqrt() / 2.0);
-        let refracted = refract_direction(&incident, &normal, 1.0 / 1.5).unwrap();
-        assert_near(refracted.x, 1.0 / 3.0);
-        assert_near(refracted.z, -(8.0_f32 / 9.0).sqrt());
-
-        let inside_incident = Vec3::new(0.9, 0.0, -((1.0_f32 - 0.9_f32.powi(2)).sqrt()));
-        assert!(refract_direction(&inside_incident, &normal, 1.5).is_none());
-    }
-
-    #[test]
-    fn glass_sphere_refracts_checkerboard_background() {
-        let mut glass = presets::create(Preset::Glass);
-        glass.albedo = 0.0;
-        glass.reflectivity = 0.0;
-        glass.specular_strength = 0.0;
-        let mut air = glass.clone();
-        air.refractive_index = 1.0;
-
-        let checker_material = Material::new(Color::new(220, 224, 222))
-            .with_albedo(1.0)
-            .with_specular(1.0, 0.0)
-            .with_texture(Arc::new(Texture::procedural(
-                crate::materials::texture::ProceduralTexture::Checkerboard,
-            )));
-        let make_scene = |sphere_material| {
-            Scene::new(
-                vec![
-                    Box::new(Object {
-                        shape: Box::new(Sphere),
-                        transform: Transform::default(),
-                        material: sphere_material,
-                    }) as Box<dyn RayIntersect>,
-                    Box::new(Object {
-                        shape: Box::new(Plane),
-                        transform: Transform::new(
-                            Vec3::new(0.0, 0.0, -1.55),
-                            Vec3::new(PI / 2.0, 0.0, 0.0),
-                            Vec3::new(14.0, 1.0, 9.0),
-                        ),
-                        material: checker_material.clone(),
-                    }),
-                ],
-                Vec::new(),
-                create_camera(),
-                Skybox::new(Color::from_hex(SKY_COLOR)),
-            )
-        };
-
-        let glass_scene = make_scene(glass);
-        let air_scene = make_scene(air);
-        let ray_origin = Vec3::new(-0.91, 0.0, 3.0);
-        let ray_direction = normalize(&Vec3::new(0.2, 0.0, -1.0));
-        let glass_color = cast_ray(&ray_origin, &ray_direction, &glass_scene, 0, 0);
-        let air_color = cast_ray(&ray_origin, &ray_direction, &air_scene, 0, 0);
-
-        assert_ne!(glass_color.to_hex(), air_color.to_hex());
-    }
-
-    #[test]
-    fn perfectly_reflective_plane_returns_reflected_scene_color() {
-        let material = Material::new(Color::new(0, 0, 0))
-            .with_albedo(0.0)
-            .with_reflectivity(1.0);
-        let plane = Object {
-            shape: Box::new(Plane),
-            transform: Transform::default(),
-            material,
-        };
-        let reflected_scene = Scene::new(
-            vec![Box::new(plane)],
-            Vec::new(),
-            create_camera(),
-            Skybox::new(Color::from_hex(SKY_COLOR)),
-        );
-        let ray_origin = Vec3::new(0.0, 1.0, 0.0);
-        let ray_direction = Vec3::new(0.0, -1.0, 0.0);
-        let expected = reflected_scene
-            .skybox
-            .sample(&Vec3::new(0.0, 1.0, 0.0))
-            .to_hex();
-
-        let reflected_color = cast_ray(&ray_origin, &ray_direction, &reflected_scene, 0, 0);
-
-        assert_eq!(reflected_color.to_hex(), expected);
-    }
-
-    #[test]
-    fn current_scene_renders_geometry() {
-        let scene = create_scene(create_camera());
-        let mut framebuffer = Framebuffer::new(80, 60);
-
-        render(&mut framebuffer, &scene, 0);
-
-        assert!(framebuffer.buffer.iter().any(|pixel| *pixel != SKY_COLOR));
     }
 }

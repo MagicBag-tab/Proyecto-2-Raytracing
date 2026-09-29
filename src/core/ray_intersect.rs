@@ -94,4 +94,9 @@ pub struct Intersect {
 
 pub trait RayIntersect: Send + Sync {
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<Intersect>;
+
+    fn ray_intersect_distance(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<f32> {
+        self.ray_intersect(ray_origin, ray_direction)
+            .map(|intersect| intersect.distance)
+    }
 }
