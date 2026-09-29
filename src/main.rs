@@ -696,6 +696,55 @@ mod tests {
     }
 
     #[test]
+    fn glass_sphere_refracts_checkerboard_background() {
+        let mut glass = presets::create(Preset::Glass);
+        glass.albedo = 0.0;
+        glass.reflectivity = 0.0;
+        glass.specular_strength = 0.0;
+        let mut air = glass.clone();
+        air.refractive_index = 1.0;
+
+        let checker_material = Material::new(Color::new(220, 224, 222))
+            .with_albedo(1.0)
+            .with_specular(1.0, 0.0)
+            .with_texture(Arc::new(Texture::procedural(
+                crate::materials::texture::ProceduralTexture::Checkerboard,
+            )));
+        let make_scene = |sphere_material| {
+            Scene::new(
+                vec![
+                    Box::new(Object {
+                        shape: Box::new(Sphere),
+                        transform: Transform::default(),
+                        material: sphere_material,
+                    }) as Box<dyn RayIntersect>,
+                    Box::new(Object {
+                        shape: Box::new(Plane),
+                        transform: Transform::new(
+                            Vec3::new(0.0, 0.0, -1.55),
+                            Vec3::new(PI / 2.0, 0.0, 0.0),
+                            Vec3::new(14.0, 1.0, 9.0),
+                        ),
+                        material: checker_material.clone(),
+                    }),
+                ],
+                Vec::new(),
+                create_camera(),
+                Skybox::new(Color::from_hex(SKY_COLOR)),
+            )
+        };
+
+        let glass_scene = make_scene(glass);
+        let air_scene = make_scene(air);
+        let ray_origin = Vec3::new(-0.91, 0.0, 3.0);
+        let ray_direction = normalize(&Vec3::new(0.2, 0.0, -1.0));
+        let glass_color = cast_ray(&ray_origin, &ray_direction, &glass_scene, 0, 0);
+        let air_color = cast_ray(&ray_origin, &ray_direction, &air_scene, 0, 0);
+
+        assert_ne!(glass_color.to_hex(), air_color.to_hex());
+    }
+
+    #[test]
     fn perfectly_reflective_plane_returns_reflected_scene_color() {
         let material = Material::new(Color::new(0, 0, 0))
             .with_albedo(0.0)
