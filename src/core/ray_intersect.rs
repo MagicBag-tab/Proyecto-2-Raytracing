@@ -7,8 +7,12 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct Material {
     pub diffuse: Color,
+    pub albedo: f32,
     pub specular: f32,
-    pub albedo: [f32; 3],
+    pub specular_strength: f32,
+    pub transparency: f32,
+    pub reflectivity: f32,
+    pub refractive_index: f32,
     pub texture: Option<Arc<Texture>>,
     pub normal_map: Option<Arc<Texture>>,
     pub specular_map: Option<Arc<Texture>>,
@@ -17,17 +21,43 @@ pub struct Material {
 }
 
 impl Material {
-    pub fn new(diffuse: Color, specular: f32, albedo: [f32; 3]) -> Self {
+    pub fn new(diffuse: Color) -> Self {
         Material {
             diffuse,
-            specular,
-            albedo,
+            albedo: 1.0,
+            specular: 32.0,
+            specular_strength: 0.04,
+            transparency: 0.0,
+            reflectivity: 0.0,
+            refractive_index: 1.0,
             texture: None,
             normal_map: None,
             specular_map: None,
             overlay_texture: None,
             overlay_normal_map: None,
         }
+    }
+
+    pub fn with_albedo(mut self, albedo: f32) -> Self {
+        self.albedo = albedo.clamp(0.0, 1.0);
+        self
+    }
+
+    pub fn with_specular(mut self, exponent: f32, strength: f32) -> Self {
+        self.specular = exponent.max(1.0);
+        self.specular_strength = strength.clamp(0.0, 1.0);
+        self
+    }
+
+    pub fn with_transparency(mut self, transparency: f32, refractive_index: f32) -> Self {
+        self.transparency = transparency.clamp(0.0, 1.0);
+        self.refractive_index = refractive_index.max(1.0);
+        self
+    }
+
+    pub fn with_reflectivity(mut self, reflectivity: f32) -> Self {
+        self.reflectivity = reflectivity.clamp(0.0, 1.0);
+        self
     }
 
     pub fn with_texture(mut self, texture: Arc<Texture>) -> Self {
