@@ -15,6 +15,7 @@ pub enum ProceduralTexture {
     Glass,
     Paper,
     Checkerboard,
+    Grass,
 }
 
 impl std::fmt::Debug for Texture {
@@ -74,6 +75,11 @@ impl Texture {
                     } else {
                         [47.0, 63.0, 72.0]
                     }
+                }
+                ProceduralTexture::Grass => {
+                    let blades = (x as f32 * 0.16 + (y as f32 * 0.11).sin()).sin() * 0.5 + 0.5;
+                    let shade = grain * 0.22 + blades * 20.0;
+                    [30.0 + shade * 0.28, 82.0 + shade, 39.0 + shade * 0.34]
                 }
             };
             Rgba([

@@ -2,6 +2,8 @@ use nalgebra_glm::Vec3;
 use std::f32::consts::PI;
 
 const PITCH_LIMIT: f32 = PI / 2.0 - 0.1;
+const MIN_ORBIT_RADIUS: f32 = 4.5;
+const MAX_ORBIT_RADIUS: f32 = 32.0;
 
 pub struct Camera {
     pub eye: Vec3,
@@ -43,5 +45,71 @@ impl Camera {
                 -radius * new_pitch.sin(),
                 radius * new_yaw.sin() * new_pitch.cos(),
             );
+    }
+
+    pub fn zoom(&mut self, scroll_delta: f32) {
+        let offset = self.eye - self.center;
+        let radius = offset.magnitude();
+        if radius <= f32::EPSILON || !scroll_delta.is_finite() {
+            return;
+        }
+
+        let new_radius =
+            (radius * (-scroll_delta * 0.12).exp()).clamp(MIN_ORBIT_RADIUS, MAX_ORBIT_RADIUS);
+        self.eye = self.center + offset * (new_radius / radius);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_near(actual: f32, expected: f32) {
+        assert!(
+            (actual - expected).abs() < 1e-4,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn orbit_keeps_the_diorama_center_and_camera_distance() {
+        let center = Vec3::new(1.0, -0.65, 2.0);
+        let mut camera = Camera::new(
+            center + Vec3::new(0.0, 0.9, 13.0),
+            center,
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        let initial_radius = (camera.eye - camera.center).magnitude();
+
+        camera.orbit(0.7, -0.2);
+
+        assert_eq!(camera.center, center);
+        assert_near((camera.eye - camera.center).magnitude(), initial_radius);
+    }
+
+    #[test]
+    fn scroll_zoom_changes_distance_but_keeps_center() {
+        let center = Vec3::new(0.0, -0.65, 0.0);
+        let mut camera = Camera::new(Vec3::new(0.0, 0.25, 13.0), center, Vec3::new(0.0, 1.0, 0.0));
+        let initial_radius = (camera.eye - camera.center).magnitude();
+
+        camera.zoom(1.0);
+
+        assert_eq!(camera.center, center);
+        assert!((camera.eye - camera.center).magnitude() < initial_radius);
+    }
+
+    #[test]
+    fn scroll_zoom_clamps_to_safe_orbit_distances() {
+        let mut camera = Camera::new(
+            Vec3::new(0.0, 0.0, 10.0),
+            Vec3::zeros(),
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+
+        camera.zoom(100.0);
+        assert_near((camera.eye - camera.center).magnitude(), MIN_ORBIT_RADIUS);
+        camera.zoom(-100.0);
+        assert_near((camera.eye - camera.center).magnitude(), MAX_ORBIT_RADIUS);
     }
 }

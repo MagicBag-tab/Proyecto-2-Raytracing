@@ -4,7 +4,7 @@ mod core;
 mod materials;
 mod shapes;
 
-use minifb::{Key, Window, WindowOptions};
+use minifb::{Key, MouseButton, MouseMode, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
 use std::f32::consts::PI;
 use std::time::Duration;
@@ -12,12 +12,16 @@ use std::time::Duration;
 use crate::core::camera::Camera;
 use crate::core::framebuffer::Framebuffer;
 use crate::core::light::Light;
-use crate::core::object::Object;
+use crate::core::object::{Object, Shape};
 use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
 use crate::core::scene::{Scene, Skybox};
 use crate::core::transform::Transform;
 use crate::materials::color::Color;
+use crate::shapes::cone::Cone;
+use crate::shapes::cube::Cube;
+use crate::shapes::cylinder::Cylinder;
 use crate::shapes::plane::Plane;
+use crate::shapes::pyramid::Pyramid;
 use crate::shapes::sphere::Sphere;
 
 const WIDTH: usize = 800;
@@ -323,56 +327,395 @@ pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8) {
 
 fn create_camera() -> Camera {
     Camera::new(
-        Vec3::new(0.0, 0.25, 13.0),
-        Vec3::new(0.0, -0.65, 0.0),
+        Vec3::new(0.0, 5.2, 18.0),
+        Vec3::new(0.0, -0.45, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
     )
+}
+
+fn add_primitive(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    shape: Box<dyn Shape>,
+    position: Vec3,
+    rotation: Vec3,
+    scale: Vec3,
+    material: Material,
+) {
+    objects.push(Box::new(Object {
+        shape,
+        transform: Transform::new(position, rotation, scale),
+        material,
+    }));
 }
 
 fn create_scene(camera: Camera) -> Scene {
     use crate::materials::presets::{create, Preset};
     use crate::materials::texture::ProceduralTexture;
 
-    let lab_materials = [
-        (Vec3::new(0.0, 1.8, 0.0), Preset::Glass),
-        (Vec3::new(-2.0, 0.25, 0.0), Preset::Stone),
-        (Vec3::new(2.0, 0.25, 0.0), Preset::Metal),
-        (Vec3::new(0.0, -1.45, 0.0), Preset::Paper),
-        (Vec3::new(0.0, -3.15, 0.0), Preset::Wood),
-    ];
-
-    let mut objects: Vec<Box<dyn RayIntersect>> = lab_materials
-        .into_iter()
-        .map(|(position, preset)| {
-            Box::new(Object {
-                shape: Box::new(Sphere),
-                transform: Transform::new(position, Vec3::zeros(), Vec3::new(0.78, 0.78, 0.78)),
-                material: create(preset),
-            }) as Box<dyn RayIntersect>
-        })
-        .collect();
-
-    let floor = Material::new(Color::new(210, 216, 216))
-        .with_albedo(0.85)
-        .with_specular(12.0, 0.05)
+    let wood = create(Preset::Wood);
+    let stone = create(Preset::Stone);
+    let metal = create(Preset::Metal);
+    let paper = create(Preset::Paper);
+    let glass = create(Preset::Glass);
+    let grass = Material::new(Color::new(63, 122, 58))
+        .with_albedo(0.92)
+        .with_specular(10.0, 0.04)
         .with_texture(std::sync::Arc::new(Texture::procedural(
-            ProceduralTexture::Checkerboard,
+            ProceduralTexture::Grass,
         )));
-    objects.push(Box::new(Object {
-        shape: Box::new(Plane),
-        transform: Transform::new(
-            Vec3::new(0.0, 0.0, -1.55),
-            Vec3::new(PI / 2.0, 0.0, 0.0),
-            Vec3::new(14.0, 1.0, 9.0),
-        ),
-        material: floor,
-    }));
+    let cream = paper.clone();
+    let terracotta = Material::new(Color::new(157, 61, 47))
+        .with_albedo(0.82)
+        .with_specular(24.0, 0.16);
+    let foliage = Material::new(Color::new(44, 112, 54))
+        .with_albedo(0.92)
+        .with_specular(12.0, 0.04);
+    let flower_pink = Material::new(Color::new(229, 91, 143))
+        .with_albedo(0.88)
+        .with_specular(28.0, 0.16);
+    let flower_yellow = Material::new(Color::new(248, 190, 65))
+        .with_albedo(0.9)
+        .with_specular(24.0, 0.18);
+    let warm_glow = Material::new(Color::new(255, 202, 112))
+        .with_albedo(0.35)
+        .with_specular(64.0, 0.5)
+        .with_transparency(0.18, 1.15);
 
-    let lights = vec![Light::new(
-        Vec3::new(-4.5, 4.0, 6.0),
-        Color::new(255, 248, 232),
-        2.6,
+    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
+
+    // Raised garden platform and grass surface.
+    add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(0.0, -3.05, 0.0),
+        Vec3::zeros(),
+        Vec3::new(13.0, 0.55, 10.5),
+        stone.clone(),
+    );
+    add_primitive(
+        &mut objects,
+        Box::new(Plane),
+        Vec3::new(0.0, -2.77, 0.0),
+        Vec3::zeros(),
+        Vec3::new(12.5, 1.0, 10.0),
+        grass.clone(),
+    );
+
+    // Cafe body, pitched roof, entrance, windows, awning, sign, and chimney.
+    add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(0.0, -1.37, -2.25),
+        Vec3::zeros(),
+        Vec3::new(3.8, 2.8, 2.45),
+        cream.clone(),
+    );
+    add_primitive(
+        &mut objects,
+        Box::new(Pyramid),
+        Vec3::new(0.0, 0.43, -2.25),
+        Vec3::zeros(),
+        Vec3::new(4.35, 1.3, 2.85),
+        terracotta.clone(),
+    );
+    add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(0.0, -2.0, -0.995),
+        Vec3::zeros(),
+        Vec3::new(0.78, 1.55, 0.08),
+        wood.clone(),
+    );
+    add_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        Vec3::new(0.27, -2.0, -0.91),
+        Vec3::zeros(),
+        Vec3::new(0.1, 0.1, 0.1),
+        metal.clone(),
+    );
+    for x in [-1.2, 1.2] {
+        add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            Vec3::new(x, -1.45, -0.98),
+            Vec3::zeros(),
+            Vec3::new(0.86, 0.78, 0.08),
+            glass.clone(),
+        );
+        add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            Vec3::new(x, -1.45, -0.91),
+            Vec3::zeros(),
+            Vec3::new(0.94, 0.08, 0.08),
+            wood.clone(),
+        );
+        add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            Vec3::new(x, -1.45, -0.91),
+            Vec3::zeros(),
+            Vec3::new(0.08, 0.86, 0.08),
+            wood.clone(),
+        );
+    }
+    for (index, x) in [-1.5, -0.75, 0.0, 0.75, 1.5].into_iter().enumerate() {
+        let awning_color = if index % 2 == 0 {
+            terracotta.clone()
+        } else {
+            cream.clone()
+        };
+        add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            Vec3::new(x, -0.72, -0.72),
+            Vec3::zeros(),
+            Vec3::new(0.74, 0.24, 0.62),
+            awning_color,
+        );
+    }
+    add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(0.0, -0.18, -0.94),
+        Vec3::zeros(),
+        Vec3::new(1.5, 0.35, 0.12),
+        wood.clone(),
+    );
+    add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(1.2, 1.05, -2.6),
+        Vec3::zeros(),
+        Vec3::new(0.48, 1.4, 0.48),
+        stone.clone(),
+    );
+
+    // Conifers and broad-canopy trees.
+    for (x, z, height) in [(-4.7, -1.3, 3.2), (4.7, -1.0, 3.6)] {
+        add_primitive(
+            &mut objects,
+            Box::new(Cylinder),
+            Vec3::new(x, -1.52, z),
+            Vec3::zeros(),
+            Vec3::new(0.34, 2.5, 0.34),
+            wood.clone(),
+        );
+        add_primitive(
+            &mut objects,
+            Box::new(Cone),
+            Vec3::new(x, -1.15 + height * 0.18, z),
+            Vec3::zeros(),
+            Vec3::new(2.25, height, 2.25),
+            foliage.clone(),
+        );
+        add_primitive(
+            &mut objects,
+            Box::new(Cone),
+            Vec3::new(x, -0.45 + height * 0.18, z),
+            Vec3::zeros(),
+            Vec3::new(1.65, height * 0.78, 1.65),
+            foliage.clone(),
+        );
+    }
+    for (x, z) in [(-5.1, 2.5), (4.9, 2.1)] {
+        add_primitive(
+            &mut objects,
+            Box::new(Cylinder),
+            Vec3::new(x, -1.62, z),
+            Vec3::zeros(),
+            Vec3::new(0.3, 2.3, 0.3),
+            wood.clone(),
+        );
+        for (dx, dy, dz, radius) in [
+            (0.0, -0.3, 0.0, 1.25),
+            (-0.62, 0.18, 0.0, 0.9),
+            (0.55, 0.25, 0.12, 0.88),
+            (0.0, 0.58, -0.35, 0.82),
+        ] {
+            add_primitive(
+                &mut objects,
+                Box::new(Sphere),
+                Vec3::new(x + dx, dy, z + dz),
+                Vec3::zeros(),
+                Vec3::new(radius, radius, radius),
+                foliage.clone(),
+            );
+        }
+    }
+
+    // Irregular stones around the planting beds.
+    for (x, z, scale) in [
+        (-3.7, 1.1, Vec3::new(0.9, 0.48, 0.68)),
+        (-3.0, 1.6, Vec3::new(0.58, 0.34, 0.5)),
+        (3.45, 1.3, Vec3::new(0.82, 0.44, 0.7)),
+        (3.9, 2.0, Vec3::new(0.5, 0.3, 0.55)),
+        (-5.6, -0.2, Vec3::new(0.7, 0.38, 0.55)),
+    ] {
+        add_primitive(
+            &mut objects,
+            Box::new(Sphere),
+            Vec3::new(x, -2.43, z),
+            Vec3::zeros(),
+            scale,
+            stone.clone(),
+        );
+    }
+
+    // Flowers and low shrubs on both sides of the stepping-stone path.
+    for (index, (x, z)) in [
+        (-3.6, -0.1),
+        (-3.1, 0.35),
+        (-3.9, 0.65),
+        (3.25, -0.2),
+        (3.75, 0.25),
+        (3.2, 0.75),
+        (-2.9, 2.3),
+        (2.8, 2.6),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        add_primitive(
+            &mut objects,
+            Box::new(Cylinder),
+            Vec3::new(x, -2.38, z),
+            Vec3::zeros(),
+            Vec3::new(0.055, 0.62, 0.055),
+            foliage.clone(),
+        );
+        add_primitive(
+            &mut objects,
+            Box::new(Sphere),
+            Vec3::new(x, -2.03, z),
+            Vec3::zeros(),
+            Vec3::new(0.2, 0.2, 0.2),
+            if index % 2 == 0 {
+                flower_pink.clone()
+            } else {
+                flower_yellow.clone()
+            },
+        );
+        add_primitive(
+            &mut objects,
+            Box::new(Sphere),
+            Vec3::new(x + 0.22, -2.38, z + 0.12),
+            Vec3::zeros(),
+            Vec3::new(0.34, 0.26, 0.32),
+            foliage.clone(),
+        );
+    }
+
+    // Entry gate, stone pillars, metal bars, and a stepping-stone path.
+    for x in [-1.55, 1.55] {
+        add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            Vec3::new(x, -1.88, 4.45),
+            Vec3::zeros(),
+            Vec3::new(0.48, 1.65, 0.48),
+            stone.clone(),
+        );
+        add_primitive(
+            &mut objects,
+            Box::new(Sphere),
+            Vec3::new(x, -0.94, 4.45),
+            Vec3::zeros(),
+            Vec3::new(0.32, 0.32, 0.32),
+            terracotta.clone(),
+        );
+    }
+    add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(0.0, -1.1, 4.45),
+        Vec3::zeros(),
+        Vec3::new(2.65, 0.18, 0.22),
+        metal.clone(),
+    );
+    for x in [-1.05, -0.53, 0.0, 0.53, 1.05] {
+        add_primitive(
+            &mut objects,
+            Box::new(Cylinder),
+            Vec3::new(x, -1.88, 4.45),
+            Vec3::zeros(),
+            Vec3::new(0.055, 1.35, 0.055),
+            metal.clone(),
+        );
+    }
+    for (index, z) in [3.8, 3.0, 2.2, 1.4, 0.6, -0.2].into_iter().enumerate() {
+        add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            Vec3::new(0.0, -2.64, z),
+            Vec3::zeros(),
+            Vec3::new(0.92, 0.12, 0.64),
+            if index % 2 == 0 {
+                cream.clone()
+            } else {
+                stone.clone()
+            },
+        );
+    }
+
+    // Lantern posts and warm point lights.
+    let mut lights = vec![Light::new(
+        Vec3::new(-4.0, 7.0, 7.0),
+        Color::new(255, 242, 220),
+        2.4,
     )];
+    for x in [-5.45, 5.45] {
+        add_primitive(
+            &mut objects,
+            Box::new(Cylinder),
+            Vec3::new(x, -1.55, 3.25),
+            Vec3::zeros(),
+            Vec3::new(0.12, 2.45, 0.12),
+            metal.clone(),
+        );
+        add_primitive(
+            &mut objects,
+            Box::new(Sphere),
+            Vec3::new(x, -0.15, 3.25),
+            Vec3::zeros(),
+            Vec3::new(0.32, 0.32, 0.32),
+            warm_glow.clone(),
+        );
+        add_primitive(
+            &mut objects,
+            Box::new(Cone),
+            Vec3::new(x, 0.2, 3.25),
+            Vec3::zeros(),
+            Vec3::new(0.7, 0.7, 0.7),
+            metal.clone(),
+        );
+        lights.push(Light::new(
+            Vec3::new(x, -0.15, 3.25),
+            Color::new(255, 190, 104),
+            0.85,
+        ));
+    }
+
+    // Low garden edging defines the diorama footprint.
+    for x in [-6.25, 6.25] {
+        add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            Vec3::new(x, -2.52, 0.0),
+            Vec3::zeros(),
+            Vec3::new(0.22, 0.45, 9.9),
+            wood.clone(),
+        );
+    }
+    add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(0.0, -2.52, -5.0),
+        Vec3::zeros(),
+        Vec3::new(12.5, 0.45, 0.22),
+        wood.clone(),
+    );
 
     Scene::new(
         objects,
@@ -390,6 +733,7 @@ fn main() {
 
     let mut camera_moved = true;
     let mut render_mode = 0; // 0 = Azulejo con gotas, 1 = Sólo Azulejo, 2 = Color Plano con gotas
+    let mut last_mouse_position: Option<(f32, f32)> = None;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         if window.is_key_pressed(Key::Key1, minifb::KeyRepeat::No) {
@@ -415,6 +759,30 @@ fn main() {
         for (key, delta_yaw, delta_pitch) in orbit {
             if window.is_key_down(key) {
                 scene.camera.orbit(delta_yaw, delta_pitch);
+                camera_moved = true;
+            }
+        }
+
+        let mouse_down = window.get_mouse_down(MouseButton::Left);
+        let mouse_position = window.get_mouse_pos(MouseMode::Clamp);
+        if mouse_down {
+            if let (Some((x, y)), Some((last_x, last_y))) = (mouse_position, last_mouse_position) {
+                let drag_sensitivity = 0.006;
+                let delta_yaw = -(x - last_x) * drag_sensitivity;
+                let delta_pitch = (y - last_y) * drag_sensitivity;
+                if delta_yaw != 0.0 || delta_pitch != 0.0 {
+                    scene.camera.orbit(delta_yaw, delta_pitch);
+                    camera_moved = true;
+                }
+            }
+            last_mouse_position = mouse_position;
+        } else {
+            last_mouse_position = None;
+        }
+
+        if let Some((_, scroll_delta)) = window.get_scroll_wheel() {
+            if scroll_delta != 0.0 {
+                scene.camera.zoom(scroll_delta);
                 camera_moved = true;
             }
         }
@@ -650,36 +1018,66 @@ mod tests {
     }
 
     #[test]
-    fn material_lab_places_five_profiles_in_front_of_checkerboard() {
+    fn cafe_garden_scene_contains_primitive_built_landmarks() {
         let scene = create_scene(create_camera());
-        let profile_positions = [
-            (Vec3::new(0.0, 1.8, 0.0), 0.94),
-            (Vec3::new(-2.0, 0.25, 0.0), 0.0),
-            (Vec3::new(2.0, 0.25, 0.0), 0.0),
-            (Vec3::new(0.0, -1.45, 0.0), 0.0),
-            (Vec3::new(0.0, -3.15, 0.0), 0.0),
-        ];
+        assert!(scene.objects.len() >= 70);
+        assert!(scene.lights.len() >= 3);
 
-        assert_eq!(scene.objects.len(), 6);
-        for (position, expected_transparency) in profile_positions {
-            let direction = normalize(&(position - scene.camera.eye));
-            let hit = scene.objects[..5]
-                .iter()
-                .filter_map(|object| object.ray_intersect(&scene.camera.eye, &direction))
-                .min_by(|left, right| left.distance.total_cmp(&right.distance))
-                .expect("material sphere should be visible from the camera");
-            assert!(hit.material.texture.is_some());
-            assert_near(hit.material.transparency, expected_transparency);
-        }
+        let ground_hit = scene.objects[0]
+            .ray_intersect(&Vec3::new(0.0, 5.0, 0.0), &Vec3::new(0.0, -1.0, 0.0))
+            .expect("raised garden platform should be intersectable");
+        assert!(ground_hit.material.texture.is_some());
 
-        let checker_ray_origin = Vec3::new(4.0, 0.0, 3.0);
-        let checker_hit = scene.objects[5]
-            .ray_intersect(&checker_ray_origin, &Vec3::new(0.0, 0.0, -1.0))
-            .expect("checkerboard should sit behind the material samples");
-        let checker = checker_hit.material.texture.unwrap();
-        assert_ne!(
-            checker.get_color(0.2, 0.2).to_hex(),
-            checker.get_color(0.8, 0.2).to_hex()
+        let cafe_door_hit = scene
+            .objects
+            .iter()
+            .filter_map(|object| {
+                object.ray_intersect(&Vec3::new(0.0, -2.0, 1.0), &Vec3::new(0.0, 0.0, -1.0))
+            })
+            .min_by(|left, right| left.distance.total_cmp(&right.distance))
+            .expect("cafe entrance should be visible from the garden");
+        assert_eq!(
+            cafe_door_hit.material.diffuse.to_hex(),
+            Color::new(150, 86, 42).to_hex()
+        );
+
+        let path_hit = scene
+            .objects
+            .iter()
+            .filter_map(|object| {
+                object.ray_intersect(&Vec3::new(0.0, 3.0, 3.0), &Vec3::new(0.0, -1.0, 0.0))
+            })
+            .min_by(|left, right| left.distance.total_cmp(&right.distance))
+            .expect("stepping path should be visible in front of the cafe");
+        assert_eq!(
+            path_hit.material.diffuse.to_hex(),
+            Color::new(125, 132, 139).to_hex()
+        );
+
+        let gate_hit = scene
+            .objects
+            .iter()
+            .filter_map(|object| {
+                object.ray_intersect(&Vec3::new(0.0, -1.8, 6.0), &Vec3::new(0.0, 0.0, -1.0))
+            })
+            .min_by(|left, right| left.distance.total_cmp(&right.distance))
+            .expect("gate bars should cross the garden entrance");
+        assert_eq!(
+            gate_hit.material.diffuse.to_hex(),
+            Color::new(170, 180, 190).to_hex()
+        );
+
+        let tree_hit = scene
+            .objects
+            .iter()
+            .filter_map(|object| {
+                object.ray_intersect(&Vec3::new(-4.7, 4.0, -1.3), &Vec3::new(0.0, -1.0, 0.0))
+            })
+            .min_by(|left, right| left.distance.total_cmp(&right.distance))
+            .expect("a tree canopy should occupy the garden");
+        assert_eq!(
+            tree_hit.material.diffuse.to_hex(),
+            Color::new(44, 112, 54).to_hex()
         );
     }
 
