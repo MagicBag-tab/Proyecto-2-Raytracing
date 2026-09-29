@@ -7,6 +7,8 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct Material {
     pub diffuse: Color,
+    pub emission: Color,
+    pub emission_strength: f32,
     pub albedo: f32,
     pub specular: f32,
     pub specular_strength: f32,
@@ -24,6 +26,8 @@ impl Material {
     pub fn new(diffuse: Color) -> Self {
         Material {
             diffuse,
+            emission: Color::new(0, 0, 0),
+            emission_strength: 0.0,
             albedo: 1.0,
             specular: 32.0,
             specular_strength: 0.04,
@@ -36,6 +40,12 @@ impl Material {
             overlay_texture: None,
             overlay_normal_map: None,
         }
+    }
+
+    pub fn with_emission(mut self, color: Color, strength: f32) -> Self {
+        self.emission = color;
+        self.emission_strength = strength.max(0.0);
+        self
     }
 
     pub fn with_albedo(mut self, albedo: f32) -> Self {

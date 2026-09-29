@@ -49,7 +49,8 @@ impl AssetMaterials {
             warm_glow: Material::new(Color::new(255, 202, 112))
                 .with_albedo(0.35)
                 .with_specular(64.0, 0.5)
-                .with_transparency(0.18, 1.15),
+                .with_transparency(0.18, 1.15)
+                .with_emission(Color::new(255, 166, 67), 1.8),
         }
     }
 }

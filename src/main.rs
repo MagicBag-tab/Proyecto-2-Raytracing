@@ -66,13 +66,7 @@ pub fn cast_shadow(
     })
 }
 
-pub fn shade(
-    intersect: &Intersect,
-    ray_origin: &Vec3,
-    lights: &[Light],
-    objects: &[Box<dyn RayIntersect>],
-    render_mode: u8,
-) -> Color {
+pub fn shade(intersect: &Intersect, ray_origin: &Vec3, scene: &Scene, render_mode: u8) -> Color {
     let view_direction = (ray_origin - intersect.point).normalize();
 
     let u = intersect.u;
@@ -131,7 +125,7 @@ pub fn shade(
             .normalize();
 
     let face_ambient = if base_normal.y < -0.5 { 0.45 } else { 1.0 };
-    let ambient_intensity = 0.35 * face_ambient;
+    let ambient_intensity = scene.ambient_intensity * face_ambient;
     let ambient = diffuse_color * ambient_intensity;
 
     let mut specular_normal = tile_world_normal;
@@ -173,9 +167,9 @@ pub fn shade(
     let mut diffuse = Color::new(0, 0, 0);
     let mut specular = Color::new(0, 0, 0);
 
-    for light in lights {
+    for light in &scene.lights {
         let light_direction = (light.position - intersect.point).normalize();
-        let light_intensity = if cast_shadow(intersect, &light_direction, light, objects) {
+        let light_intensity = if cast_shadow(intersect, &light_direction, light, &scene.objects) {
             0.0
         } else {
             light.intensity
@@ -192,7 +186,9 @@ pub fn shade(
             specular + light.color * (specular_intensity * specular_factor * light_intensity);
     }
 
-    ambient + diffuse + specular + ambient_reflection
+    let emission = intersect.material.emission
+        * (intersect.material.emission_strength * scene.lantern_emission);
+    ambient + diffuse + specular + ambient_reflection + emission
 }
 
 pub fn cast_ray(
@@ -223,13 +219,7 @@ pub fn cast_ray(
         return scene.skybox.sample(ray_direction);
     };
 
-    let color = shade(
-        &intersect,
-        ray_origin,
-        &scene.lights,
-        &scene.objects,
-        render_mode,
-    );
+    let color = shade(&intersect, ray_origin, scene, render_mode);
 
     let reflectivity = intersect.material.reflectivity;
     let transparency = intersect.material.transparency;
@@ -613,6 +603,17 @@ fn main() {
     let mut last_mouse_position: Option<(f32, f32)> = None;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        if window.is_key_pressed(Key::Tab, minifb::KeyRepeat::No) {
+            scene.advance_day_phase();
+            camera_moved = true;
+            let phase_name = match scene.day_phase {
+                crate::core::scene::DayPhase::Day => "DAY",
+                crate::core::scene::DayPhase::Sunset => "SUNSET",
+                crate::core::scene::DayPhase::Night => "NIGHT",
+            };
+            window.set_title(&format!("Lakitu | {phase_name} | Tab: cycle"));
+        }
+
         if window.is_key_pressed(Key::Key1, minifb::KeyRepeat::No) {
             render_mode = 0;
             camera_moved = true;
