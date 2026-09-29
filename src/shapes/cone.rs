@@ -1,10 +1,14 @@
-use nalgebra_glm::Vec3;
 use crate::core::object::Shape;
+use nalgebra_glm::Vec3;
 
 pub struct Cone;
 
 impl Shape for Cone {
-    fn local_intersect(&self, local_origin: &Vec3, local_dir_norm: &Vec3) -> Option<(f32, Vec3, f32, f32)> {
+    fn local_intersect(
+        &self,
+        local_origin: &Vec3,
+        local_dir_norm: &Vec3,
+    ) -> Option<(f32, Vec3, f32, f32)> {
         let o = local_origin;
         let d = local_dir_norm;
 

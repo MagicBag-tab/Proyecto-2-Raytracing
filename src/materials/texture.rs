@@ -1,5 +1,5 @@
-use image::{DynamicImage, GenericImageView};
 use crate::materials::color::Color;
+use image::{DynamicImage, GenericImageView};
 
 pub struct Texture {
     image: DynamicImage,

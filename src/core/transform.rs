@@ -1,4 +1,4 @@
-use nalgebra_glm::{Mat4, Vec3, identity, rotate_x, rotate_y, rotate_z, scale, translate};
+use nalgebra_glm::{identity, rotate_x, rotate_y, rotate_z, scale, translate, Mat4, Vec3};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Transform {

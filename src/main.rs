@@ -10,16 +10,16 @@ use std::f32::consts::PI;
 use std::time::Duration;
 
 use crate::core::camera::Camera;
-use crate::materials::color::Color;
 use crate::core::framebuffer::Framebuffer;
 use crate::core::light::Light;
+use crate::core::object::Object;
 use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
 use crate::core::scene::{Scene, Skybox};
-use crate::shapes::cone::Cone;
-use crate::shapes::plane::Plane;
-use crate::shapes::cylinder::Cylinder;
 use crate::core::transform::Transform;
-use crate::core::object::Object;
+use crate::materials::color::Color;
+use crate::shapes::cone::Cone;
+use crate::shapes::cylinder::Cylinder;
+use crate::shapes::plane::Plane;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -71,7 +71,7 @@ pub fn shade(
     if render_mode != 1 {
         if let Some(overlay) = &intersect.material.overlay_texture {
             blend_factor = overlay.get_intensity(u, v).sqrt().clamp(0.0, 1.0);
-            
+
             if blend_factor > 0.0 {
                 if let Some(overlay_normal) = &intersect.material.overlay_normal_map {
                     water_normal_mapped = overlay_normal.get_normal(u, v);
@@ -91,13 +91,11 @@ pub fn shade(
     }
 
     if blend_factor > 0.0 {
-
         let drop_tint = Color::new(255, 255, 255) * (0.03 * blend_factor);
-        
 
         let bottom_factor = (-water_normal_mapped.y).max(0.0);
         let bottom_shadow = 1.0 - (bottom_factor * 0.4 * blend_factor); // 0.4 controla qué tan oscura es
-        
+
         diffuse_color = (diffuse_color * bottom_shadow) + drop_tint;
     }
 
@@ -116,7 +114,9 @@ pub fn shade(
         }
     }
 
-    let tile_world_normal = (tangent * tile_normal.x + bitangent * tile_normal.y + base_normal * tile_normal.z).normalize();
+    let tile_world_normal =
+        (tangent * tile_normal.x + bitangent * tile_normal.y + base_normal * tile_normal.z)
+            .normalize();
 
     let face_ambient = if base_normal.y < -0.5 { 0.45 } else { 1.0 };
     let ambient_intensity = 0.35 * face_ambient;
@@ -135,19 +135,27 @@ pub fn shade(
     let mut ambient_reflection = Color::new(0, 0, 0);
 
     if blend_factor > 0.0 {
-        let water_world_normal = (tangent * water_normal_mapped.x + bitangent * water_normal_mapped.y + base_normal * water_normal_mapped.z).normalize();
-        
-        specular_normal = (tile_world_normal * (1.0 - blend_factor) + water_world_normal * blend_factor).normalize();
+        let water_world_normal = (tangent * water_normal_mapped.x
+            + bitangent * water_normal_mapped.y
+            + base_normal * water_normal_mapped.z)
+            .normalize();
 
-        let fresnel = (1.0 - dot(&view_direction, &water_world_normal).abs().clamp(0.0, 1.0)).powf(5.0);
-        
+        specular_normal = (tile_world_normal * (1.0 - blend_factor)
+            + water_world_normal * blend_factor)
+            .normalize();
+
+        let fresnel = (1.0
+            - dot(&view_direction, &water_world_normal)
+                .abs()
+                .clamp(0.0, 1.0))
+        .powf(5.0);
+
         let sky_color = Color::new(100, 130, 160);
         ambient_reflection = sky_color * (fresnel * 0.6 * blend_factor);
 
-        specular_factor = specular_factor * (1.0 - blend_factor)
-            + (2.0 + 1.0 * fresnel) * blend_factor;
-        specular_exponent = specular_exponent * (1.0 - blend_factor)
-            + 150.0 * blend_factor;
+        specular_factor =
+            specular_factor * (1.0 - blend_factor) + (2.0 + 1.0 * fresnel) * blend_factor;
+        specular_exponent = specular_exponent * (1.0 - blend_factor) + 150.0 * blend_factor;
     }
 
     let mut diffuse = Color::new(0, 0, 0);
@@ -162,15 +170,14 @@ pub fn shade(
         };
         let diffuse_intensity = dot(&tile_world_normal, &light_direction).max(0.0);
         diffuse = diffuse
-            + diffuse_color
-                * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
+            + diffuse_color * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
 
         let reflect_direction = reflect(&-light_direction, &specular_normal);
         let specular_intensity = dot(&view_direction, &reflect_direction)
             .max(0.0)
             .powf(specular_exponent);
-        specular = specular
-            + light.color * (specular_intensity * specular_factor * light_intensity);
+        specular =
+            specular + light.color * (specular_intensity * specular_factor * light_intensity);
     }
 
     ambient + diffuse + specular + ambient_reflection
@@ -191,7 +198,10 @@ pub fn cast_ray(
 
     for object in &scene.objects {
         if let Some(intersect) = object.ray_intersect(ray_origin, ray_direction) {
-            if closest.as_ref().is_none_or(|current| intersect.distance < current.distance) {
+            if closest
+                .as_ref()
+                .is_none_or(|current| intersect.distance < current.distance)
+            {
                 closest = Some(intersect);
             }
         }
@@ -201,7 +211,13 @@ pub fn cast_ray(
         return scene.skybox.sample(ray_direction);
     };
 
-    let color = shade(&intersect, ray_origin, &scene.lights, &scene.objects, render_mode);
+    let color = shade(
+        &intersect,
+        ray_origin,
+        &scene.lights,
+        &scene.objects,
+        render_mode,
+    );
 
     let reflectivity = intersect.material.albedo[2];
 
@@ -225,38 +241,38 @@ pub fn cast_ray(
 
 use rayon::prelude::*;
 
-pub fn render(
-    framebuffer: &mut Framebuffer,
-    scene: &Scene,
-    render_mode: u8,
-) {
+pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8) {
     let width_f = framebuffer.width as f32;
     let height_f = framebuffer.height as f32;
     let aspect_ratio = width_f / height_f;
     let perspective_scale = (FOV / 2.0).tan();
     let width = framebuffer.width;
 
-    framebuffer.buffer.par_iter_mut().enumerate().for_each(|(i, pixel)| {
-        let x = i % width;
-        let y = i / width;
+    framebuffer
+        .buffer
+        .par_iter_mut()
+        .enumerate()
+        .for_each(|(i, pixel)| {
+            let x = i % width;
+            let y = i / width;
 
-        let screen_x = (2.0 * x as f32) / width_f - 1.0;
-        let screen_y = -(2.0 * y as f32) / height_f + 1.0;
+            let screen_x = (2.0 * x as f32) / width_f - 1.0;
+            let screen_y = -(2.0 * y as f32) / height_f + 1.0;
 
-        let screen_x = screen_x * aspect_ratio * perspective_scale;
-        let screen_y = screen_y * perspective_scale;
+            let screen_x = screen_x * aspect_ratio * perspective_scale;
+            let screen_y = screen_y * perspective_scale;
 
-        let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
-        let ray_direction = scene.camera.basis_change(&ray_direction);
+            let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
+            let ray_direction = scene.camera.basis_change(&ray_direction);
 
-        let sample_color = cast_ray(&scene.camera.eye, &ray_direction, scene, 0, render_mode);
-        let hex = sample_color.to_hex();
-        
-        let r = (hex >> 16) & 0xFF;
-        let g = (hex >> 8) & 0xFF;
-        let b = hex & 0xFF;
-        *pixel = r << 16 | g << 8 | b;
-    });
+            let sample_color = cast_ray(&scene.camera.eye, &ray_direction, scene, 0, render_mode);
+            let hex = sample_color.to_hex();
+
+            let r = (hex >> 16) & 0xFF;
+            let g = (hex >> 8) & 0xFF;
+            let b = hex & 0xFF;
+            *pixel = r << 16 | g << 8 | b;
+        });
 }
 
 fn create_camera() -> Camera {
@@ -268,12 +284,18 @@ fn create_camera() -> Camera {
 }
 
 fn create_scene(camera: Camera) -> Scene {
-    let tile_texture = std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_COL_2K.jpg"));
+    let tile_texture =
+        std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_COL_2K.jpg"));
     let normal_map = std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_NRM_2K.jpg"));
-    let specular_map = std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_REFL_2K.jpg"));
+    let specular_map =
+        std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_REFL_2K.jpg"));
 
-    let water_mask = std::sync::Arc::new(Texture::new("assets/WaterDropletsMixedBubbled001_ALPHAMASKED_2K.png"));
-    let water_normal = std::sync::Arc::new(Texture::new("assets/WaterDropletsMixedBubbled001_NRM_2K.jpg"));
+    let water_mask = std::sync::Arc::new(Texture::new(
+        "assets/WaterDropletsMixedBubbled001_ALPHAMASKED_2K.png",
+    ));
+    let water_normal = std::sync::Arc::new(Texture::new(
+        "assets/WaterDropletsMixedBubbled001_NRM_2K.jpg",
+    ));
 
     let base_material = Material::new(Color::new(199, 159, 224), 250.0, [0.6, 1.0, 0.1])
         .with_texture(tile_texture.clone())
@@ -380,3 +402,188 @@ fn main() {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::object::Shape;
+    use crate::shapes::cube::Cube;
+    use crate::shapes::pyramid::Pyramid;
+    use crate::shapes::sphere::Sphere;
+    use crate::shapes::triangle::Triangle;
+    use std::sync::Arc;
+
+    fn test_material() -> Material {
+        Material::new(Color::new(180, 180, 180), 16.0, [1.0, 0.0, 0.0])
+    }
+
+    fn test_object(shape: Box<dyn Shape>, transform: Transform) -> Object {
+        Object {
+            shape,
+            transform,
+            material: test_material(),
+        }
+    }
+
+    fn assert_near(actual: f32, expected: f32) {
+        assert!(
+            (actual - expected).abs() < 1e-3,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn every_shape_is_intersectable() {
+        let cases: [(&str, Box<dyn Shape>, Vec3, Vec3); 7] = [
+            (
+                "cube",
+                Box::new(Cube),
+                Vec3::new(0.0, 0.0, 3.0),
+                Vec3::new(0.0, 0.0, -1.0),
+            ),
+            (
+                "sphere",
+                Box::new(Sphere),
+                Vec3::new(0.0, 0.0, 3.0),
+                Vec3::new(0.0, 0.0, -1.0),
+            ),
+            (
+                "cylinder",
+                Box::new(Cylinder),
+                Vec3::new(0.0, 0.0, 3.0),
+                Vec3::new(0.0, 0.0, -1.0),
+            ),
+            (
+                "cone",
+                Box::new(Cone),
+                Vec3::new(0.0, 0.0, 3.0),
+                Vec3::new(0.0, 0.0, -1.0),
+            ),
+            (
+                "plane",
+                Box::new(Plane),
+                Vec3::new(0.0, 2.0, 0.0),
+                Vec3::new(0.0, -1.0, 0.0),
+            ),
+            (
+                "pyramid",
+                Box::new(Pyramid),
+                Vec3::new(0.0, 0.0, 3.0),
+                Vec3::new(0.0, 0.0, -1.0),
+            ),
+            (
+                "triangle",
+                Box::new(Triangle),
+                Vec3::new(0.0, 0.0, 3.0),
+                Vec3::new(0.0, 0.0, -1.0),
+            ),
+        ];
+
+        for (name, shape, origin, direction) in cases {
+            let object = test_object(shape, Transform::default());
+            let hit = object.ray_intersect(&origin, &direction);
+            assert!(hit.is_some(), "{name} did not intersect the test ray");
+        }
+    }
+
+    #[test]
+    fn object_translation_moves_its_intersection() {
+        let object = test_object(
+            Box::new(Sphere),
+            Transform::new(
+                Vec3::new(2.0, 0.0, 0.0),
+                Vec3::zeros(),
+                Vec3::new(1.0, 1.0, 1.0),
+            ),
+        );
+        let origin = Vec3::new(2.0, 0.0, 3.0);
+        let direction = Vec3::new(0.0, 0.0, -1.0);
+        let hit = object.ray_intersect(&origin, &direction).unwrap();
+
+        assert_near(hit.point.x, 2.0);
+        assert_near(hit.distance, 2.0);
+        assert!(object
+            .ray_intersect(&Vec3::new(0.0, 0.0, 3.0), &direction)
+            .is_none());
+    }
+
+    #[test]
+    fn object_rotation_changes_its_intersection_normal() {
+        let object = test_object(
+            Box::new(Triangle),
+            Transform::new(
+                Vec3::zeros(),
+                Vec3::new(0.0, PI / 2.0, 0.0),
+                Vec3::new(1.0, 1.0, 1.0),
+            ),
+        );
+        let hit = object
+            .ray_intersect(&Vec3::new(3.0, 0.0, 0.0), &Vec3::new(-1.0, 0.0, 0.0))
+            .unwrap();
+
+        assert!(hit.normal.x > 0.99, "rotated normal was {:?}", hit.normal);
+        assert_near(hit.point.x, 0.0);
+    }
+
+    #[test]
+    fn object_scale_changes_its_intersection_distance() {
+        let object = test_object(
+            Box::new(Sphere),
+            Transform::new(Vec3::zeros(), Vec3::zeros(), Vec3::new(2.0, 1.0, 1.0)),
+        );
+        let hit = object
+            .ray_intersect(&Vec3::new(3.0, 0.0, 0.0), &Vec3::new(-1.0, 0.0, 0.0))
+            .unwrap();
+
+        assert_near(hit.point.x, 2.0);
+        assert_near(hit.distance, 1.0);
+    }
+
+    #[test]
+    fn objects_can_keep_distinct_color_textures() {
+        let tile_texture = Arc::new(Texture::new("assets/TilesSquarePoolMixed001_COL_2K.jpg"));
+        let water_texture = Arc::new(Texture::new(
+            "assets/WaterDropletsMixedBubbled001_COL_2K.jpg",
+        ));
+        let tile = test_material().with_texture(tile_texture.clone());
+        let water = test_material().with_texture(water_texture.clone());
+
+        let tile_object = Object {
+            shape: Box::new(Sphere),
+            transform: Transform::default(),
+            material: tile,
+        };
+        let water_object = Object {
+            shape: Box::new(Sphere),
+            transform: Transform::default(),
+            material: water,
+        };
+        let origin = Vec3::new(0.0, 0.0, 3.0);
+        let direction = Vec3::new(0.0, 0.0, -1.0);
+        let tile_hit = tile_object.ray_intersect(&origin, &direction).unwrap();
+        let water_hit = water_object.ray_intersect(&origin, &direction).unwrap();
+        let tile_bound = tile_hit.material.texture.as_ref().unwrap();
+        let water_bound = water_hit.material.texture.as_ref().unwrap();
+
+        assert!(Arc::ptr_eq(tile_bound, &tile_texture));
+        assert!(Arc::ptr_eq(water_bound, &water_texture));
+        let samples_differ = [0.1, 0.3, 0.5, 0.7, 0.9].into_iter().any(|u| {
+            [0.1, 0.3, 0.5, 0.7, 0.9].into_iter().any(|v| {
+                tile_bound.get_color(u, v).to_hex() != water_bound.get_color(u, v).to_hex()
+            })
+        });
+        assert!(
+            samples_differ,
+            "the two bound color textures sampled identically"
+        );
+    }
+
+    #[test]
+    fn current_scene_renders_geometry() {
+        let scene = create_scene(create_camera());
+        let mut framebuffer = Framebuffer::new(80, 60);
+
+        render(&mut framebuffer, &scene, 0);
+
+        assert!(framebuffer.buffer.iter().any(|pixel| *pixel != SKY_COLOR));
+    }
+}

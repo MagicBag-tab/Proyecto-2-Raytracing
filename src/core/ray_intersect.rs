@@ -1,8 +1,8 @@
 use crate::materials::color::Color;
 use nalgebra_glm::Vec3;
 
-use std::sync::Arc;
 use crate::materials::texture::Texture;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct Material {
@@ -34,7 +34,7 @@ impl Material {
         self.texture = Some(texture);
         self
     }
-    
+
     pub fn with_normal_map(mut self, normal_map: Arc<Texture>) -> Self {
         self.normal_map = Some(normal_map);
         self
