@@ -1,5 +1,4 @@
-use crate::materials::texture::Texture;
-
+pub mod assets;
 mod core;
 mod materials;
 mod shapes;
@@ -9,6 +8,10 @@ use nalgebra_glm::{dot, normalize, Vec3};
 use std::f32::consts::PI;
 use std::time::Duration;
 
+use crate::assets::{
+    create_chair, create_fence, create_house, create_lantern, create_sakura, create_table,
+    create_tree, AssetMaterials,
+};
 use crate::core::camera::Camera;
 use crate::core::framebuffer::Framebuffer;
 use crate::core::light::Light;
@@ -17,11 +20,9 @@ use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
 use crate::core::scene::{Scene, Skybox};
 use crate::core::transform::Transform;
 use crate::materials::color::Color;
-use crate::shapes::cone::Cone;
 use crate::shapes::cube::Cube;
 use crate::shapes::cylinder::Cylinder;
 use crate::shapes::plane::Plane;
-use crate::shapes::pyramid::Pyramid;
 use crate::shapes::sphere::Sphere;
 
 const WIDTH: usize = 800;
@@ -356,48 +357,17 @@ fn add_primitive(
 }
 
 fn create_scene(camera: Camera) -> Scene {
-    use crate::materials::presets::{create, Preset};
-    use crate::materials::texture::ProceduralTexture;
-
-    let wood = create(Preset::Wood);
-    let stone = create(Preset::Stone);
-    let metal = create(Preset::Metal);
-    let paper = create(Preset::Paper);
-    let glass = create(Preset::Glass);
-    let grass = Material::new(Color::new(63, 122, 58))
-        .with_albedo(0.92)
-        .with_specular(10.0, 0.04)
-        .with_texture(std::sync::Arc::new(Texture::procedural(
-            ProceduralTexture::Grass,
-        )));
-    let cream = paper.clone();
-    let terracotta = Material::new(Color::new(157, 61, 47))
-        .with_albedo(0.82)
-        .with_specular(24.0, 0.16);
-    let foliage = Material::new(Color::new(44, 112, 54))
-        .with_albedo(0.92)
-        .with_specular(12.0, 0.04);
-    let flower_pink = Material::new(Color::new(229, 91, 143))
-        .with_albedo(0.88)
-        .with_specular(28.0, 0.16);
-    let flower_yellow = Material::new(Color::new(248, 190, 65))
-        .with_albedo(0.9)
-        .with_specular(24.0, 0.18);
-    let warm_glow = Material::new(Color::new(255, 202, 112))
-        .with_albedo(0.35)
-        .with_specular(64.0, 0.5)
-        .with_transparency(0.18, 1.15);
-
+    let materials = AssetMaterials::new();
     let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
 
-    // Raised garden platform and grass surface.
+    // Raised garden platform and grass.
     add_primitive(
         &mut objects,
         Box::new(Cube),
         Vec3::new(0.0, -3.05, 0.0),
         Vec3::zeros(),
         Vec3::new(13.0, 0.55, 10.5),
-        stone.clone(),
+        materials.stone.clone(),
     );
     add_primitive(
         &mut objects,
@@ -405,154 +375,114 @@ fn create_scene(camera: Camera) -> Scene {
         Vec3::new(0.0, -2.77, 0.0),
         Vec3::zeros(),
         Vec3::new(12.5, 1.0, 10.0),
-        grass.clone(),
+        materials.grass.clone(),
     );
 
-    // Cafe body, pitched roof, entrance, windows, awning, sign, and chimney.
-    add_primitive(
+    append_asset(
         &mut objects,
-        Box::new(Cube),
-        Vec3::new(0.0, -1.37, -2.25),
-        Vec3::zeros(),
-        Vec3::new(3.8, 2.8, 2.45),
-        cream.clone(),
+        create_house(Vec3::new(0.0, -2.27, -2.25), 1.0, &materials),
     );
-    add_primitive(
+    append_asset(
         &mut objects,
-        Box::new(Pyramid),
-        Vec3::new(0.0, 0.43, -2.25),
-        Vec3::zeros(),
-        Vec3::new(4.35, 1.3, 2.85),
-        terracotta.clone(),
+        create_tree(Vec3::new(-4.7, -2.77, -1.3), 1.0, &materials),
     );
-    add_primitive(
+    append_asset(
         &mut objects,
-        Box::new(Cube),
-        Vec3::new(0.0, -2.0, -0.995),
-        Vec3::zeros(),
-        Vec3::new(0.78, 1.55, 0.08),
-        wood.clone(),
+        create_tree(Vec3::new(4.7, -2.77, -1.0), 1.1, &materials),
     );
-    add_primitive(
+    append_asset(
         &mut objects,
-        Box::new(Sphere),
-        Vec3::new(0.27, -2.0, -0.91),
-        Vec3::zeros(),
-        Vec3::new(0.1, 0.1, 0.1),
-        metal.clone(),
+        create_sakura(Vec3::new(-5.1, -2.77, 2.5), 1.0, &materials),
     );
-    for x in [-1.2, 1.2] {
-        add_primitive(
-            &mut objects,
-            Box::new(Cube),
-            Vec3::new(x, -1.45, -0.98),
-            Vec3::zeros(),
-            Vec3::new(0.86, 0.78, 0.08),
-            glass.clone(),
-        );
-        add_primitive(
-            &mut objects,
-            Box::new(Cube),
-            Vec3::new(x, -1.45, -0.91),
-            Vec3::zeros(),
-            Vec3::new(0.94, 0.08, 0.08),
-            wood.clone(),
-        );
-        add_primitive(
-            &mut objects,
-            Box::new(Cube),
-            Vec3::new(x, -1.45, -0.91),
-            Vec3::zeros(),
-            Vec3::new(0.08, 0.86, 0.08),
-            wood.clone(),
-        );
-    }
-    for (index, x) in [-1.5, -0.75, 0.0, 0.75, 1.5].into_iter().enumerate() {
-        let awning_color = if index % 2 == 0 {
-            terracotta.clone()
-        } else {
-            cream.clone()
-        };
-        add_primitive(
-            &mut objects,
-            Box::new(Cube),
-            Vec3::new(x, -0.72, -0.72),
-            Vec3::zeros(),
-            Vec3::new(0.74, 0.24, 0.62),
-            awning_color,
-        );
-    }
-    add_primitive(
+    append_asset(
         &mut objects,
-        Box::new(Cube),
-        Vec3::new(0.0, -0.18, -0.94),
-        Vec3::zeros(),
-        Vec3::new(1.5, 0.35, 0.12),
-        wood.clone(),
-    );
-    add_primitive(
-        &mut objects,
-        Box::new(Cube),
-        Vec3::new(1.2, 1.05, -2.6),
-        Vec3::zeros(),
-        Vec3::new(0.48, 1.4, 0.48),
-        stone.clone(),
+        create_sakura(Vec3::new(4.9, -2.77, 2.1), 0.95, &materials),
     );
 
-    // Conifers and broad-canopy trees.
-    for (x, z, height) in [(-4.7, -1.3, 3.2), (4.7, -1.0, 3.6)] {
+    // Seating beside the cafe, leaving the central path open.
+    append_asset(
+        &mut objects,
+        create_table(Vec3::new(-3.0, -2.77, -0.7), 0.75, &materials),
+    );
+    append_asset(
+        &mut objects,
+        create_chair(Vec3::new(-4.15, -2.77, -0.7), 0.65, &materials),
+    );
+    append_asset(
+        &mut objects,
+        create_chair(Vec3::new(-1.85, -2.77, -0.7), 0.65, &materials),
+    );
+    append_asset(
+        &mut objects,
+        create_table(Vec3::new(3.0, -2.77, -0.7), 0.75, &materials),
+    );
+    append_asset(
+        &mut objects,
+        create_chair(Vec3::new(1.85, -2.77, -0.7), 0.65, &materials),
+    );
+    append_asset(
+        &mut objects,
+        create_chair(Vec3::new(4.15, -2.77, -0.7), 0.65, &materials),
+    );
+
+    // Fence sections preserve a clear opening at the front gate.
+    append_asset(
+        &mut objects,
+        create_fence(Vec3::new(0.0, -2.77, -4.85), 12.0, &materials),
+    );
+    append_asset(
+        &mut objects,
+        create_fence(Vec3::new(-4.8, -2.77, 4.85), 3.0, &materials),
+    );
+    append_asset(
+        &mut objects,
+        create_fence(Vec3::new(4.8, -2.77, 4.85), 3.0, &materials),
+    );
+    for x in [-1.55, 1.55] {
+        add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            Vec3::new(x, -1.88, 4.45),
+            Vec3::zeros(),
+            Vec3::new(0.48, 1.65, 0.48),
+            materials.stone.clone(),
+        );
+        add_primitive(
+            &mut objects,
+            Box::new(Sphere),
+            Vec3::new(x, -0.94, 4.45),
+            Vec3::zeros(),
+            Vec3::new(0.32, 0.32, 0.32),
+            materials.terracotta.clone(),
+        );
+    }
+    add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(0.0, -1.1, 4.45),
+        Vec3::zeros(),
+        Vec3::new(2.65, 0.18, 0.22),
+        materials.metal.clone(),
+    );
+    for x in [-1.05, -0.53, 0.0, 0.53, 1.05] {
         add_primitive(
             &mut objects,
             Box::new(Cylinder),
-            Vec3::new(x, -1.52, z),
+            Vec3::new(x, -1.88, 4.45),
             Vec3::zeros(),
-            Vec3::new(0.34, 2.5, 0.34),
-            wood.clone(),
+            Vec3::new(0.055, 1.35, 0.055),
+            materials.metal.clone(),
         );
-        add_primitive(
-            &mut objects,
-            Box::new(Cone),
-            Vec3::new(x, -1.15 + height * 0.18, z),
-            Vec3::zeros(),
-            Vec3::new(2.25, height, 2.25),
-            foliage.clone(),
-        );
-        add_primitive(
-            &mut objects,
-            Box::new(Cone),
-            Vec3::new(x, -0.45 + height * 0.18, z),
-            Vec3::zeros(),
-            Vec3::new(1.65, height * 0.78, 1.65),
-            foliage.clone(),
-        );
-    }
-    for (x, z) in [(-5.1, 2.5), (4.9, 2.1)] {
-        add_primitive(
-            &mut objects,
-            Box::new(Cylinder),
-            Vec3::new(x, -1.62, z),
-            Vec3::zeros(),
-            Vec3::new(0.3, 2.3, 0.3),
-            wood.clone(),
-        );
-        for (dx, dy, dz, radius) in [
-            (0.0, -0.3, 0.0, 1.25),
-            (-0.62, 0.18, 0.0, 0.9),
-            (0.55, 0.25, 0.12, 0.88),
-            (0.0, 0.58, -0.35, 0.82),
-        ] {
-            add_primitive(
-                &mut objects,
-                Box::new(Sphere),
-                Vec3::new(x + dx, dy, z + dz),
-                Vec3::zeros(),
-                Vec3::new(radius, radius, radius),
-                foliage.clone(),
-            );
-        }
     }
 
-    // Irregular stones around the planting beds.
+    for x in [-5.45, 5.45] {
+        append_asset(
+            &mut objects,
+            create_lantern(Vec3::new(x, -2.77, 3.25), 0.8, &materials),
+        );
+    }
+
+    // Decorative stones, flower clumps, and stepping stones.
     for (x, z, scale) in [
         (-3.7, 1.1, Vec3::new(0.9, 0.48, 0.68)),
         (-3.0, 1.6, Vec3::new(0.58, 0.34, 0.5)),
@@ -566,11 +496,12 @@ fn create_scene(camera: Camera) -> Scene {
             Vec3::new(x, -2.43, z),
             Vec3::zeros(),
             scale,
-            stone.clone(),
+            materials.stone.clone(),
         );
     }
 
-    // Flowers and low shrubs on both sides of the stepping-stone path.
+    let flower_pink = Material::new(Color::new(229, 91, 143)).with_specular(28.0, 0.16);
+    let flower_yellow = Material::new(Color::new(248, 190, 65)).with_specular(24.0, 0.18);
     for (index, (x, z)) in [
         (-3.6, -0.1),
         (-3.1, 0.35),
@@ -590,7 +521,7 @@ fn create_scene(camera: Camera) -> Scene {
             Vec3::new(x, -2.38, z),
             Vec3::zeros(),
             Vec3::new(0.055, 0.62, 0.055),
-            foliage.clone(),
+            materials.foliage.clone(),
         );
         add_primitive(
             &mut objects,
@@ -604,53 +535,8 @@ fn create_scene(camera: Camera) -> Scene {
                 flower_yellow.clone()
             },
         );
-        add_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            Vec3::new(x + 0.22, -2.38, z + 0.12),
-            Vec3::zeros(),
-            Vec3::new(0.34, 0.26, 0.32),
-            foliage.clone(),
-        );
     }
 
-    // Entry gate, stone pillars, metal bars, and a stepping-stone path.
-    for x in [-1.55, 1.55] {
-        add_primitive(
-            &mut objects,
-            Box::new(Cube),
-            Vec3::new(x, -1.88, 4.45),
-            Vec3::zeros(),
-            Vec3::new(0.48, 1.65, 0.48),
-            stone.clone(),
-        );
-        add_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            Vec3::new(x, -0.94, 4.45),
-            Vec3::zeros(),
-            Vec3::new(0.32, 0.32, 0.32),
-            terracotta.clone(),
-        );
-    }
-    add_primitive(
-        &mut objects,
-        Box::new(Cube),
-        Vec3::new(0.0, -1.1, 4.45),
-        Vec3::zeros(),
-        Vec3::new(2.65, 0.18, 0.22),
-        metal.clone(),
-    );
-    for x in [-1.05, -0.53, 0.0, 0.53, 1.05] {
-        add_primitive(
-            &mut objects,
-            Box::new(Cylinder),
-            Vec3::new(x, -1.88, 4.45),
-            Vec3::zeros(),
-            Vec3::new(0.055, 1.35, 0.055),
-            metal.clone(),
-        );
-    }
     for (index, z) in [3.8, 3.0, 2.2, 1.4, 0.6, -0.2].into_iter().enumerate() {
         add_primitive(
             &mut objects,
@@ -659,52 +545,14 @@ fn create_scene(camera: Camera) -> Scene {
             Vec3::zeros(),
             Vec3::new(0.92, 0.12, 0.64),
             if index % 2 == 0 {
-                cream.clone()
+                materials.paper.clone()
             } else {
-                stone.clone()
+                materials.stone.clone()
             },
         );
     }
 
-    // Lantern posts and warm point lights.
-    let mut lights = vec![Light::new(
-        Vec3::new(-4.0, 7.0, 7.0),
-        Color::new(255, 242, 220),
-        2.4,
-    )];
-    for x in [-5.45, 5.45] {
-        add_primitive(
-            &mut objects,
-            Box::new(Cylinder),
-            Vec3::new(x, -1.55, 3.25),
-            Vec3::zeros(),
-            Vec3::new(0.12, 2.45, 0.12),
-            metal.clone(),
-        );
-        add_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            Vec3::new(x, -0.15, 3.25),
-            Vec3::zeros(),
-            Vec3::new(0.32, 0.32, 0.32),
-            warm_glow.clone(),
-        );
-        add_primitive(
-            &mut objects,
-            Box::new(Cone),
-            Vec3::new(x, 0.2, 3.25),
-            Vec3::zeros(),
-            Vec3::new(0.7, 0.7, 0.7),
-            metal.clone(),
-        );
-        lights.push(Light::new(
-            Vec3::new(x, -0.15, 3.25),
-            Color::new(255, 190, 104),
-            0.85,
-        ));
-    }
-
-    // Low garden edging defines the diorama footprint.
+    // Low garden edging and warm lantern lighting.
     for x in [-6.25, 6.25] {
         add_primitive(
             &mut objects,
@@ -712,7 +560,7 @@ fn create_scene(camera: Camera) -> Scene {
             Vec3::new(x, -2.52, 0.0),
             Vec3::zeros(),
             Vec3::new(0.22, 0.45, 9.9),
-            wood.clone(),
+            materials.wood.clone(),
         );
     }
     add_primitive(
@@ -721,8 +569,22 @@ fn create_scene(camera: Camera) -> Scene {
         Vec3::new(0.0, -2.52, -5.0),
         Vec3::zeros(),
         Vec3::new(12.5, 0.45, 0.22),
-        wood.clone(),
+        materials.wood.clone(),
     );
+
+    let lights = vec![
+        Light::new(Vec3::new(-4.0, 7.0, 7.0), Color::new(255, 242, 220), 2.4),
+        Light::new(
+            Vec3::new(-5.45, -0.15, 3.25),
+            Color::new(255, 190, 104),
+            0.85,
+        ),
+        Light::new(
+            Vec3::new(5.45, -0.15, 3.25),
+            Color::new(255, 190, 104),
+            0.85,
+        ),
+    ];
 
     Scene::new(
         objects,
@@ -732,6 +594,14 @@ fn create_scene(camera: Camera) -> Scene {
     )
 }
 
+fn append_asset(objects: &mut Vec<Box<dyn RayIntersect>>, asset: Vec<Object>) {
+    objects.extend(
+        asset
+            .into_iter()
+            .map(|object| Box::new(object) as Box<dyn RayIntersect>),
+    );
+}
+
 fn main() {
     let frame_delay = Duration::from_millis(16);
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
@@ -739,7 +609,7 @@ fn main() {
     let mut scene = create_scene(create_camera());
 
     let mut camera_moved = true;
-    let mut render_mode = 0; // 0 = Azulejo con gotas, 1 = Sólo Azulejo, 2 = Color Plano con gotas
+    let mut render_mode = 0;
     let mut last_mouse_position: Option<(f32, f32)> = None;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
@@ -762,7 +632,6 @@ fn main() {
             (Key::Up, 0.0, -ROTATION_SPEED),
             (Key::Down, 0.0, ROTATION_SPEED),
         ];
-
         for (key, delta_yaw, delta_pitch) in orbit {
             if window.is_key_down(key) {
                 scene.camera.orbit(delta_yaw, delta_pitch);
@@ -802,7 +671,6 @@ fn main() {
         window
             .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)
             .unwrap();
-
         std::thread::sleep(frame_delay);
     }
 }
