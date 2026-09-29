@@ -17,9 +17,8 @@ use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
 use crate::core::scene::{Scene, Skybox};
 use crate::core::transform::Transform;
 use crate::materials::color::Color;
-use crate::shapes::cone::Cone;
-use crate::shapes::cylinder::Cylinder;
 use crate::shapes::plane::Plane;
+use crate::shapes::sphere::Sphere;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -324,76 +323,55 @@ pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8) {
 
 fn create_camera() -> Camera {
     Camera::new(
-        Vec3::new(0.0, 0.4, 6.0),
-        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.25, 13.0),
+        Vec3::new(0.0, -0.65, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
     )
 }
 
 fn create_scene(camera: Camera) -> Scene {
-    let tile_texture =
-        std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_COL_2K.jpg"));
-    let normal_map = std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_NRM_2K.jpg"));
-    let specular_map =
-        std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_REFL_2K.jpg"));
+    use crate::materials::presets::{create, Preset};
+    use crate::materials::texture::ProceduralTexture;
 
-    let water_mask = std::sync::Arc::new(Texture::new(
-        "assets/WaterDropletsMixedBubbled001_ALPHAMASKED_2K.png",
-    ));
-    let water_normal = std::sync::Arc::new(Texture::new(
-        "assets/WaterDropletsMixedBubbled001_NRM_2K.jpg",
-    ));
-
-    let base_material = Material::new(Color::new(199, 159, 224))
-        .with_albedo(0.6)
-        .with_specular(250.0, 1.0)
-        .with_reflectivity(0.1)
-        .with_texture(tile_texture.clone())
-        .with_normal_map(normal_map.clone())
-        .with_specular_map(specular_map.clone())
-        .with_overlay(water_mask.clone(), water_normal.clone());
-
-    let brown = crate::materials::presets::create(crate::materials::presets::Preset::Wood);
-    let green = Material::new(Color::new(34, 139, 34))
-        .with_albedo(0.9)
-        .with_specular(10.0, 0.1);
-
-    let objects: Vec<Box<dyn RayIntersect>> = vec![
-        Box::new(Object {
-            shape: Box::new(Plane),
-            transform: Transform::new(
-                Vec3::new(0.0, -1.5, 0.0),
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(10.0, 1.0, 10.0),
-            ),
-            material: base_material.clone(),
-        }),
-        // Tronco (Cilindro)
-        Box::new(Object {
-            shape: Box::new(Cylinder),
-            transform: Transform::new(
-                Vec3::new(0.0, -0.5, 0.0),
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(0.5, 2.0, 0.5),
-            ),
-            material: brown.clone(),
-        }),
-        // Hojas (Cono)
-        Box::new(Object {
-            shape: Box::new(Cone),
-            transform: Transform::new(
-                Vec3::new(0.0, 1.5, 0.0),
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(2.0, 2.0, 2.0),
-            ),
-            material: green.clone(),
-        }),
+    let lab_materials = [
+        (Vec3::new(0.0, 1.8, 0.0), Preset::Glass),
+        (Vec3::new(-2.0, 0.25, 0.0), Preset::Stone),
+        (Vec3::new(2.0, 0.25, 0.0), Preset::Metal),
+        (Vec3::new(0.0, -1.45, 0.0), Preset::Paper),
+        (Vec3::new(0.0, -3.15, 0.0), Preset::Wood),
     ];
+
+    let mut objects: Vec<Box<dyn RayIntersect>> = lab_materials
+        .into_iter()
+        .map(|(position, preset)| {
+            Box::new(Object {
+                shape: Box::new(Sphere),
+                transform: Transform::new(position, Vec3::zeros(), Vec3::new(0.78, 0.78, 0.78)),
+                material: create(preset),
+            }) as Box<dyn RayIntersect>
+        })
+        .collect();
+
+    let floor = Material::new(Color::new(210, 216, 216))
+        .with_albedo(0.85)
+        .with_specular(12.0, 0.05)
+        .with_texture(std::sync::Arc::new(Texture::procedural(
+            ProceduralTexture::Checkerboard,
+        )));
+    objects.push(Box::new(Object {
+        shape: Box::new(Plane),
+        transform: Transform::new(
+            Vec3::new(0.0, 0.0, -1.55),
+            Vec3::new(PI / 2.0, 0.0, 0.0),
+            Vec3::new(14.0, 1.0, 9.0),
+        ),
+        material: floor,
+    }));
 
     let lights = vec![Light::new(
         Vec3::new(-4.5, 4.0, 6.0),
-        Color::new(255, 250, 244),
-        2.0,
+        Color::new(255, 248, 232),
+        2.6,
     )];
 
     Scene::new(
@@ -459,7 +437,9 @@ mod tests {
     use super::*;
     use crate::core::object::Shape;
     use crate::materials::presets::{self, Preset};
+    use crate::shapes::cone::Cone;
     use crate::shapes::cube::Cube;
+    use crate::shapes::cylinder::Cylinder;
     use crate::shapes::pyramid::Pyramid;
     use crate::shapes::sphere::Sphere;
     use crate::shapes::triangle::Triangle;
@@ -667,6 +647,40 @@ mod tests {
         assert_eq!(materials[1].transparency, 0.0);
         assert_eq!(materials[2].reflectivity, 0.35);
         assert_eq!(materials[4].transparency, 0.0);
+    }
+
+    #[test]
+    fn material_lab_places_five_profiles_in_front_of_checkerboard() {
+        let scene = create_scene(create_camera());
+        let profile_positions = [
+            (Vec3::new(0.0, 1.8, 0.0), 0.94),
+            (Vec3::new(-2.0, 0.25, 0.0), 0.0),
+            (Vec3::new(2.0, 0.25, 0.0), 0.0),
+            (Vec3::new(0.0, -1.45, 0.0), 0.0),
+            (Vec3::new(0.0, -3.15, 0.0), 0.0),
+        ];
+
+        assert_eq!(scene.objects.len(), 6);
+        for (position, expected_transparency) in profile_positions {
+            let direction = normalize(&(position - scene.camera.eye));
+            let hit = scene.objects[..5]
+                .iter()
+                .filter_map(|object| object.ray_intersect(&scene.camera.eye, &direction))
+                .min_by(|left, right| left.distance.total_cmp(&right.distance))
+                .expect("material sphere should be visible from the camera");
+            assert!(hit.material.texture.is_some());
+            assert_near(hit.material.transparency, expected_transparency);
+        }
+
+        let checker_ray_origin = Vec3::new(4.0, 0.0, 3.0);
+        let checker_hit = scene.objects[5]
+            .ray_intersect(&checker_ray_origin, &Vec3::new(0.0, 0.0, -1.0))
+            .expect("checkerboard should sit behind the material samples");
+        let checker = checker_hit.material.texture.unwrap();
+        assert_ne!(
+            checker.get_color(0.2, 0.2).to_hex(),
+            checker.get_color(0.8, 0.2).to_hex()
+        );
     }
 
     #[test]

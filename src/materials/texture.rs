@@ -14,6 +14,7 @@ pub enum ProceduralTexture {
     Metal,
     Glass,
     Paper,
+    Checkerboard,
 }
 
 impl std::fmt::Debug for Texture {
@@ -66,6 +67,13 @@ impl Texture {
                 ProceduralTexture::Paper => {
                     let fibers = grain * 12.0;
                     [224.0 + fibers, 215.0 + fibers, 190.0 + fibers]
+                }
+                ProceduralTexture::Checkerboard => {
+                    if ((x / 8) + (y / 8)) % 2 == 0 {
+                        [220.0, 224.0, 222.0]
+                    } else {
+                        [47.0, 63.0, 72.0]
+                    }
                 }
             };
             Rgba([
