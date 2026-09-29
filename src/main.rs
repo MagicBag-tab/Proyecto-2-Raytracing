@@ -14,18 +14,16 @@ use crate::materials::color::Color;
 use crate::core::framebuffer::Framebuffer;
 use crate::core::light::Light;
 use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
-use crate::shapes::cube::Cube;
-use crate::shapes::pyramid::Pyramid;
+use crate::core::scene::{Scene, Skybox};
 use crate::shapes::cone::Cone;
 use crate::shapes::plane::Plane;
-use crate::shapes::triangle::Triangle;
 use crate::shapes::cylinder::Cylinder;
 use crate::core::transform::Transform;
 use crate::core::object::Object;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
-const BACKGROUND_COLOR: u32 = 0x040C24;
+const SKY_COLOR: u32 = 0x040C24;
 
 const FOV: f32 = PI / 3.0;
 
@@ -38,10 +36,6 @@ const MAX_DEPTH: u32 = 3;
 
 pub fn reflect(incident: &Vec3, normal: &Vec3) -> Vec3 {
     incident - normal * (2.0 * dot(incident, normal))
-}
-
-fn environment_color(_ray_origin: &Vec3, _ray_direction: &Vec3) -> Color {
-    Color::from_hex(BACKGROUND_COLOR)
 }
 
 pub fn cast_shadow(
@@ -63,18 +57,11 @@ pub fn cast_shadow(
 pub fn shade(
     intersect: &Intersect,
     ray_origin: &Vec3,
-    light: &Light,
+    lights: &[Light],
     objects: &[Box<dyn RayIntersect>],
     render_mode: u8,
 ) -> Color {
-    let light_direction = (light.position - intersect.point).normalize();
     let view_direction = (ray_origin - intersect.point).normalize();
-
-    let light_intensity = if cast_shadow(intersect, &light_direction, light, objects) {
-        0.0
-    } else {
-        light.intensity
-    };
 
     let u = intersect.u;
     let v = intersect.v;
@@ -135,11 +122,6 @@ pub fn shade(
     let ambient_intensity = 0.35 * face_ambient;
     let ambient = diffuse_color * ambient_intensity;
 
-    let diffuse_intensity = dot(&tile_world_normal, &light_direction).max(0.0);
-
-    let diffuse = diffuse_color
-        * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
-
     let mut specular_normal = tile_world_normal;
     let mut specular_factor = intersect.material.albedo[1];
     let mut specular_exponent = intersect.material.specular;
@@ -168,12 +150,28 @@ pub fn shade(
             + 150.0 * blend_factor;
     }
 
-    let reflect_direction = reflect(&-light_direction, &specular_normal);
-    let specular_intensity = dot(&view_direction, &reflect_direction)
-        .max(0.0)
-        .powf(specular_exponent);
+    let mut diffuse = Color::new(0, 0, 0);
+    let mut specular = Color::new(0, 0, 0);
 
-    let specular = light.color * (specular_intensity * specular_factor * light_intensity);
+    for light in lights {
+        let light_direction = (light.position - intersect.point).normalize();
+        let light_intensity = if cast_shadow(intersect, &light_direction, light, objects) {
+            0.0
+        } else {
+            light.intensity
+        };
+        let diffuse_intensity = dot(&tile_world_normal, &light_direction).max(0.0);
+        diffuse = diffuse
+            + diffuse_color
+                * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
+
+        let reflect_direction = reflect(&-light_direction, &specular_normal);
+        let specular_intensity = dot(&view_direction, &reflect_direction)
+            .max(0.0)
+            .powf(specular_exponent);
+        specular = specular
+            + light.color * (specular_intensity * specular_factor * light_intensity);
+    }
 
     ambient + diffuse + specular + ambient_reflection
 }
@@ -181,18 +179,17 @@ pub fn shade(
 pub fn cast_ray(
     ray_origin: &Vec3,
     ray_direction: &Vec3,
-    objects: &[Box<dyn RayIntersect>],
-    light: &Light,
+    scene: &Scene,
     depth: u32,
     render_mode: u8,
 ) -> Color {
     if depth > MAX_DEPTH {
-        return Color::from_hex(BACKGROUND_COLOR);
+        return scene.skybox.sample(ray_direction);
     }
 
     let mut closest: Option<Intersect> = None;
 
-    for object in objects {
+    for object in &scene.objects {
         if let Some(intersect) = object.ray_intersect(ray_origin, ray_direction) {
             if closest.as_ref().is_none_or(|current| intersect.distance < current.distance) {
                 closest = Some(intersect);
@@ -201,10 +198,10 @@ pub fn cast_ray(
     }
 
     let Some(intersect) = closest else {
-        return environment_color(ray_origin, ray_direction);
+        return scene.skybox.sample(ray_direction);
     };
 
-    let color = shade(&intersect, ray_origin, light, objects, render_mode);
+    let color = shade(&intersect, ray_origin, &scene.lights, &scene.objects, render_mode);
 
     let reflectivity = intersect.material.albedo[2];
 
@@ -218,8 +215,7 @@ pub fn cast_ray(
     let reflected = cast_ray(
         &reflect_origin,
         &reflect_direction,
-        objects,
-        light,
+        scene,
         depth + 1,
         render_mode,
     );
@@ -231,9 +227,7 @@ use rayon::prelude::*;
 
 pub fn render(
     framebuffer: &mut Framebuffer,
-    objects: &[Box<dyn RayIntersect>],
-    camera: &Camera,
-    light: &Light,
+    scene: &Scene,
     render_mode: u8,
 ) {
     let width_f = framebuffer.width as f32;
@@ -253,9 +247,9 @@ pub fn render(
         let screen_y = screen_y * perspective_scale;
 
         let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
-        let ray_direction = camera.basis_change(&ray_direction);
+        let ray_direction = scene.camera.basis_change(&ray_direction);
 
-        let sample_color = cast_ray(&camera.eye, &ray_direction, objects, light, 0, render_mode);
+        let sample_color = cast_ray(&scene.camera.eye, &ray_direction, scene, 0, render_mode);
         let hex = sample_color.to_hex();
         
         let r = (hex >> 16) & 0xFF;
@@ -265,13 +259,15 @@ pub fn render(
     });
 }
 
-fn main() {
-    let frame_delay = Duration::from_millis(16);
+fn create_camera() -> Camera {
+    Camera::new(
+        Vec3::new(0.0, 0.4, 6.0),
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+    )
+}
 
-    let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-
-    let mut window = Window::new("Lakitu", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
-
+fn create_scene(camera: Camera) -> Scene {
     let tile_texture = std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_COL_2K.jpg"));
     let normal_map = std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_NRM_2K.jpg"));
     let specular_map = std::sync::Arc::new(Texture::new("assets/TilesSquarePoolMixed001_REFL_2K.jpg"));
@@ -320,13 +316,25 @@ fn main() {
         }),
     ];
 
-    let light = Light::new(Vec3::new(-4.5, 4.0, 6.0), Color::new(255, 250, 244), 2.0);
+    let lights = vec![Light::new(
+        Vec3::new(-4.5, 4.0, 6.0),
+        Color::new(255, 250, 244),
+        2.0,
+    )];
 
-    let mut camera = Camera::new(
-        Vec3::new(0.0, 0.4, 6.0),
-        Vec3::new(0.0, 0.0, 0.0),
-        Vec3::new(0.0, 1.0, 0.0),
-    );
+    Scene::new(
+        objects,
+        lights,
+        camera,
+        Skybox::new(Color::from_hex(SKY_COLOR)),
+    )
+}
+
+fn main() {
+    let frame_delay = Duration::from_millis(16);
+    let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+    let mut window = Window::new("Lakitu", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
+    let mut scene = create_scene(create_camera());
 
     let mut camera_moved = true;
     let mut render_mode = 0; // 0 = Azulejo con gotas, 1 = Sólo Azulejo, 2 = Color Plano con gotas
@@ -354,13 +362,13 @@ fn main() {
 
         for (key, delta_yaw, delta_pitch) in orbit {
             if window.is_key_down(key) {
-                camera.orbit(delta_yaw, delta_pitch);
+                scene.camera.orbit(delta_yaw, delta_pitch);
                 camera_moved = true;
             }
         }
 
         if camera_moved {
-            render(&mut framebuffer, &objects, &camera, &light, render_mode);
+            render(&mut framebuffer, &scene, render_mode);
             camera_moved = false;
         }
 
