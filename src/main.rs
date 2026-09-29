@@ -696,6 +696,34 @@ mod tests {
     }
 
     #[test]
+    fn perfectly_reflective_plane_returns_reflected_scene_color() {
+        let material = Material::new(Color::new(0, 0, 0))
+            .with_albedo(0.0)
+            .with_reflectivity(1.0);
+        let plane = Object {
+            shape: Box::new(Plane),
+            transform: Transform::default(),
+            material,
+        };
+        let reflected_scene = Scene::new(
+            vec![Box::new(plane)],
+            Vec::new(),
+            create_camera(),
+            Skybox::new(Color::from_hex(SKY_COLOR)),
+        );
+        let ray_origin = Vec3::new(0.0, 1.0, 0.0);
+        let ray_direction = Vec3::new(0.0, -1.0, 0.0);
+        let expected = reflected_scene
+            .skybox
+            .sample(&Vec3::new(0.0, 1.0, 0.0))
+            .to_hex();
+
+        let reflected_color = cast_ray(&ray_origin, &ray_direction, &reflected_scene, 0, 0);
+
+        assert_eq!(reflected_color.to_hex(), expected);
+    }
+
+    #[test]
     fn current_scene_renders_geometry() {
         let scene = create_scene(create_camera());
         let mut framebuffer = Framebuffer::new(80, 60);
