@@ -50,7 +50,7 @@ impl Texture {
     pub fn procedural(pattern: ProceduralTexture) -> Self {
         let size = 128;
         let image = ImageBuffer::from_fn(size, size, |x, y| {
-            let grain = noise(x, y);
+            let grain = noise(x, y) / 255.0;
             let base = match pattern {
                 ProceduralTexture::Wood => {
                     let bands = ((y as f32 * 0.18 + (x as f32 * 0.055).sin() * 2.5).sin() * 0.5
@@ -144,4 +144,36 @@ fn noise(x: u32, y: u32) -> f32 {
     let mut value = x.wrapping_mul(0x45d9f3b) ^ y.wrapping_mul(0x119de1f3);
     value = (value ^ (value >> 16)).wrapping_mul(0x45d9f3b);
     ((value ^ (value >> 16)) & 0xff) as f32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ProceduralTexture, Texture};
+    use image::GenericImageView;
+
+    #[test]
+    fn wood_stone_metal_and_paper_patterns_keep_texture_detail() {
+        for pattern in [
+            ProceduralTexture::Wood,
+            ProceduralTexture::Stone,
+            ProceduralTexture::Metal,
+            ProceduralTexture::Paper,
+        ] {
+            let texture = Texture::procedural(pattern);
+            let mut minimum = 255_u8;
+            let mut maximum = 0_u8;
+            for y in 0..texture.height {
+                for x in 0..texture.width {
+                    let pixel = texture.image.get_pixel(x, y);
+                    minimum = minimum.min(pixel[0].min(pixel[1]).min(pixel[2]));
+                    maximum = maximum.max(pixel[0].max(pixel[1]).max(pixel[2]));
+                }
+            }
+            assert!(maximum < 250, "procedural pattern clipped near white");
+            assert!(
+                maximum > minimum + 4,
+                "procedural pattern lost tonal detail"
+            );
+        }
+    }
 }

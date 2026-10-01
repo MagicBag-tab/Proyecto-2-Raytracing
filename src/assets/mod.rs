@@ -1,6 +1,8 @@
 mod builders;
 
 pub use builders::{
-    create_back_door, create_chair, create_door, create_fence, create_house, create_lantern,
-    create_sakura, create_table, create_tree, AssetMaterials,
+    append_primitive, build_bamboo_cluster, build_base_diorama, build_cafe_patio,
+    build_japanese_cafe, build_path, build_rock_garden, build_sakura_tree,
+    build_sakura_tree_variant, build_secret_room_interior, build_toro_lantern, create_door,
+    AssetMaterials,
 };

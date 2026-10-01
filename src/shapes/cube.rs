@@ -9,70 +9,102 @@ impl Shape for Cube {
         local_origin: &Vec3,
         local_dir_norm: &Vec3,
     ) -> Option<(f32, Vec3, f32, f32)> {
-        let min_bound = Vec3::new(-0.5, -0.5, -0.5);
-        let max_bound = Vec3::new(0.5, 0.5, 0.5);
+        let bounds_min = [-0.5_f32; 3];
+        let bounds_max = [0.5_f32; 3];
+        let origins = [local_origin.x, local_origin.y, local_origin.z];
+        let directions = [local_dir_norm.x, local_dir_norm.y, local_dir_norm.z];
+        let mut enter_t = f32::NEG_INFINITY;
+        let mut exit_t = f32::INFINITY;
+        let mut enter_normal = Vec3::zeros();
+        let mut exit_normal = Vec3::zeros();
 
-        let mut t_min = (min_bound.x - local_origin.x) / local_dir_norm.x;
-        let mut t_max = (max_bound.x - local_origin.x) / local_dir_norm.x;
-        if t_min > t_max {
-            std::mem::swap(&mut t_min, &mut t_max);
+        for axis in 0..3 {
+            let origin = origins[axis];
+            let direction = directions[axis];
+            if direction.abs() <= 1e-8 {
+                if origin < bounds_min[axis] || origin > bounds_max[axis] {
+                    return None;
+                }
+                continue;
+            }
+
+            let axis_normal = match axis {
+                0 => Vec3::new(1.0, 0.0, 0.0),
+                1 => Vec3::new(0.0, 1.0, 0.0),
+                _ => Vec3::new(0.0, 0.0, 1.0),
+            };
+            let mut near_t = (bounds_min[axis] - origin) / direction;
+            let mut far_t = (bounds_max[axis] - origin) / direction;
+            let mut near_normal = -axis_normal;
+            let mut far_normal = axis_normal;
+            if near_t > far_t {
+                std::mem::swap(&mut near_t, &mut far_t);
+                std::mem::swap(&mut near_normal, &mut far_normal);
+            }
+
+            if near_t > enter_t {
+                enter_t = near_t;
+                enter_normal = near_normal;
+            }
+            if far_t < exit_t {
+                exit_t = far_t;
+                exit_normal = far_normal;
+            }
+            if enter_t > exit_t {
+                return None;
+            }
         }
 
-        let mut ty_min = (min_bound.y - local_origin.y) / local_dir_norm.y;
-        let mut ty_max = (max_bound.y - local_origin.y) / local_dir_norm.y;
-        if ty_min > ty_max {
-            std::mem::swap(&mut ty_min, &mut ty_max);
-        }
-
-        if (t_min > ty_max) || (ty_min > t_max) {
-            return None;
-        }
-        if ty_min > t_min {
-            t_min = ty_min;
-        }
-        if ty_max < t_max {
-            t_max = ty_max;
-        }
-
-        let mut tz_min = (min_bound.z - local_origin.z) / local_dir_norm.z;
-        let mut tz_max = (max_bound.z - local_origin.z) / local_dir_norm.z;
-        if tz_min > tz_max {
-            std::mem::swap(&mut tz_min, &mut tz_max);
-        }
-
-        if (t_min > tz_max) || (tz_min > t_max) {
-            return None;
-        }
-        if tz_min > t_min {
-            t_min = tz_min;
-        }
-        if t_min <= 0.0 {
-            return None;
-        }
-
-        let local_point = local_origin + local_dir_norm * t_min;
-        let p_abs = Vec3::new(
-            local_point.x.abs(),
-            local_point.y.abs(),
-            local_point.z.abs(),
-        );
-        let mut local_normal = Vec3::new(0.0, 0.0, 0.0);
-        if p_abs.x > p_abs.y && p_abs.x > p_abs.z {
-            local_normal.x = local_point.x.signum();
-        } else if p_abs.y > p_abs.x && p_abs.y > p_abs.z {
-            local_normal.y = local_point.y.signum();
+        let (hit_t, local_normal) = if enter_t > 1e-4 {
+            (enter_t, enter_normal)
+        } else if exit_t > 1e-4 {
+            (exit_t, exit_normal)
         } else {
-            local_normal.z = local_point.z.signum();
-        }
+            return None;
+        };
 
-        let (u, v) = if local_normal.x.abs() > 0.0 {
+        let local_point = local_origin + local_dir_norm * hit_t;
+        let (u, v) = if local_normal.x.abs() > 0.5 {
             (local_point.z + 0.5, local_point.y + 0.5)
-        } else if local_normal.y.abs() > 0.0 {
+        } else if local_normal.y.abs() > 0.5 {
             (local_point.x + 0.5, local_point.z + 0.5)
         } else {
             (local_point.x + 0.5, local_point.y + 0.5)
         };
 
-        Some((t_min, local_normal, u, v))
+        Some((hit_t, local_normal, u, v))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cube;
+    use crate::core::object::Shape;
+    use nalgebra_glm::Vec3;
+
+    #[test]
+    fn parallel_axis_ray_hits_without_nan_slabs() {
+        let hit = Cube
+            .local_intersect(&Vec3::new(0.0, 0.0, 2.0), &Vec3::new(0.0, 0.0, -1.0))
+            .unwrap();
+        assert!((hit.0 - 1.5).abs() < 1e-6);
+        let point = Vec3::new(0.0, 0.0, 2.0) + Vec3::new(0.0, 0.0, -1.0) * hit.0;
+        assert!((point.z - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn ray_pointing_away_does_not_hit_behind_origin() {
+        assert!(Cube
+            .local_intersect(&Vec3::new(2.0, 0.0, 0.0), &Vec3::new(1.0, 0.0, 0.0))
+            .is_none());
+    }
+
+    #[test]
+    fn ray_starting_inside_uses_positive_exit_root() {
+        let hit = Cube
+            .local_intersect(&Vec3::zeros(), &Vec3::new(0.0, 1.0, 0.0))
+            .unwrap();
+        assert!((hit.0 - 0.5).abs() < 1e-6);
+        assert!(hit.1.y > 0.0);
     }
 }

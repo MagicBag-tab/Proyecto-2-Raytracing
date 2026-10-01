@@ -6,36 +6,34 @@ mod shapes;
 use minifb::{Key, MouseButton, MouseMode, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
 use std::f32::consts::PI;
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::assets::{
-    create_back_door, create_chair, create_fence, create_house, create_lantern, create_sakura,
-    create_table, create_tree, AssetMaterials,
+    build_bamboo_cluster, build_base_diorama, build_cafe_patio, build_japanese_cafe, build_path,
+    build_rock_garden, build_sakura_tree_variant, build_toro_lantern, AssetMaterials,
 };
 use crate::core::camera::Camera;
 use crate::core::framebuffer::Framebuffer;
-use crate::core::interaction::{InteractiveKind, ObjectId};
+use crate::core::interaction::ObjectId;
 use crate::core::light::Light;
 use crate::core::object::{Object, Shape};
-use crate::core::picking::pick;
 use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
 use crate::core::scene::{Scene, Skybox};
 use crate::core::transform::Transform;
 use crate::materials::color::Color;
+use crate::materials::texture::Texture;
 use crate::shapes::cube::Cube;
-use crate::shapes::cylinder::Cylinder;
 use crate::shapes::plane::Plane;
 use crate::shapes::sphere::Sphere;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
-const SKY_COLOR: u32 = 0x040C24;
-
 const FOV: f32 = PI / 3.0;
 
 const ROTATION_SPEED: f32 = PI / 60.0;
 
-const SHADOW_BIAS: f32 = 1e-3;
+const SHADOW_BIAS_SCALE: f32 = 2e-5;
 const REFLECTION_BIAS: f32 = 1e-3;
 const REFRACTION_BIAS: f32 = 1e-3;
 
@@ -58,16 +56,29 @@ pub fn cast_shadow(
     light: &Light,
     scene: &Scene,
 ) -> bool {
-    let shadow_ray_origin = intersect.point + intersect.normal * SHADOW_BIAS;
-    let light_distance = (light.position - intersect.point).magnitude();
+    let normal_side = if dot(&intersect.normal, light_direction) >= 0.0 {
+        1.0
+    } else {
+        -1.0
+    };
+    let epsilon = SHADOW_BIAS_SCALE * intersect.point.magnitude().max(1.0);
+    let shadow_ray_origin = intersect.point + intersect.normal * (epsilon * normal_side);
+    let to_light = light.position - shadow_ray_origin;
+    let light_distance = to_light.magnitude();
+    if light_distance <= epsilon {
+        return false;
+    }
+    let shadow_direction = to_light / light_distance;
 
     scene.objects.iter().enumerate().any(|(index, object)| {
-        if !scene.is_object_visible(ObjectId(index)) {
+        if index == intersect.object_index || !scene.is_object_visible(ObjectId(index)) {
             return false;
         }
         object
-            .ray_intersect_distance(&shadow_ray_origin, light_direction)
-            .is_some_and(|blocker_distance| blocker_distance < light_distance)
+            .ray_intersect_distance(&shadow_ray_origin, &shadow_direction)
+            .is_some_and(|blocker_distance| {
+                blocker_distance > 0.0 && blocker_distance < light_distance
+            })
     })
 }
 
@@ -218,6 +229,8 @@ pub fn cast_ray(
                 .as_ref()
                 .is_none_or(|current| intersect.distance < current.distance)
             {
+                let mut intersect = intersect;
+                intersect.object_index = index;
                 closest = Some(intersect);
             }
         }
@@ -320,10 +333,86 @@ pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8) {
         });
 }
 
+fn create_scene(camera: Camera) -> Scene {
+    let materials = AssetMaterials::new();
+    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
+
+    append_asset(
+        &mut objects,
+        build_base_diorama(Vec3::zeros(), 1.0, &materials),
+    );
+    append_asset(&mut objects, build_path(Vec3::zeros(), 1.0, &materials));
+    append_asset(
+        &mut objects,
+        build_rock_garden(Vec3::new(-2.35, 0.1, 1.35), 1.0, &materials),
+    );
+    append_asset(
+        &mut objects,
+        build_sakura_tree_variant(Vec3::new(-2.65, 0.1, -0.5), 1.05, &materials, 0),
+    );
+    append_asset(
+        &mut objects,
+        build_sakura_tree_variant(Vec3::new(2.45, 0.1, 0.45), 0.68, &materials, 1),
+    );
+    append_asset(
+        &mut objects,
+        build_bamboo_cluster(Vec3::new(2.35, 0.1, -1.55), 1.05, &materials),
+    );
+    append_asset(
+        &mut objects,
+        build_toro_lantern(Vec3::new(2.85, 0.1, 1.72), 0.62, &materials),
+    );
+    append_asset(
+        &mut objects,
+        build_japanese_cafe(Vec3::new(-0.2, 0.15, -0.6), 1.0, &materials),
+    );
+    append_asset(
+        &mut objects,
+        build_cafe_patio(Vec3::new(-1.8, 0.1, 0.35), 0.95, &materials),
+    );
+
+    let lights = vec![Light {
+        position: Vec3::new(0.0, 10.0, 10.0),
+        color: Color::new(255, 247, 226),
+        intensity: 2.4,
+    }];
+
+    let mut skybox = Skybox::new(Color::new(230, 242, 255));
+    for (phase, name) in [
+        (crate::core::scene::DayPhase::Day, "sky_day.png"),
+        (crate::core::scene::DayPhase::Sunset, "sky_sunset.png"),
+        (crate::core::scene::DayPhase::Night, "sky_night.png"),
+        (crate::core::scene::DayPhase::Dawn, "sky_dawn.png"),
+    ] {
+        let paths = [
+            format!(
+                "assets/sky_{}/0.png",
+                name.replace("sky_", "").replace(".png", "")
+            ),
+            format!(
+                "assets/sky_{}/1.png",
+                name.replace("sky_", "").replace(".png", "")
+            ),
+            format!(
+                "assets/sky_{}/2.png",
+                name.replace("sky_", "").replace(".png", "")
+            ),
+            format!(
+                "assets/sky_{}/3.png",
+                name.replace("sky_", "").replace(".png", "")
+            ),
+        ];
+        let p_refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+        let _ = skybox.load_phase_layers(phase, &p_refs);
+    }
+
+    Scene::new(objects, lights, camera, skybox)
+}
+
 fn create_camera() -> Camera {
     Camera::new(
-        Vec3::new(0.0, 5.2, 18.0),
-        Vec3::new(0.0, -0.45, 0.0),
+        Vec3::new(2.9, 5.1, 7.5),
+        Vec3::new(0.0, 0.35, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
     )
 }
@@ -345,395 +434,6 @@ fn add_primitive(
     object_index
 }
 
-fn create_scene(camera: Camera) -> Scene {
-    let materials = AssetMaterials::new();
-    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
-
-    // Raised garden platform and grass.
-    add_primitive(
-        &mut objects,
-        Box::new(Cube),
-        Vec3::new(0.0, -3.05, 0.0),
-        Vec3::zeros(),
-        Vec3::new(13.0, 0.55, 10.5),
-        materials.stone.clone(),
-    );
-    add_primitive(
-        &mut objects,
-        Box::new(Plane),
-        Vec3::new(0.0, -2.77, 0.0),
-        Vec3::zeros(),
-        Vec3::new(12.5, 1.0, 10.0),
-        materials.grass.clone(),
-    );
-
-    append_asset(
-        &mut objects,
-        create_house(Vec3::new(0.0, -2.27, -2.25), 1.0, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_tree(Vec3::new(-4.7, -2.77, -1.3), 1.0, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_tree(Vec3::new(4.7, -2.77, -1.0), 1.1, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_sakura(Vec3::new(-5.1, -2.77, 2.5), 1.0, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_sakura(Vec3::new(4.9, -2.77, 2.1), 0.95, &materials),
-    );
-
-    // Seating beside the cafe, leaving the central path open.
-    append_asset(
-        &mut objects,
-        create_table(Vec3::new(-3.0, -2.77, -0.7), 0.75, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_chair(Vec3::new(-4.15, -2.77, -0.7), 0.65, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_chair(Vec3::new(-1.85, -2.77, -0.7), 0.65, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_table(Vec3::new(3.0, -2.77, -0.7), 0.75, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_chair(Vec3::new(1.85, -2.77, -0.7), 0.65, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_chair(Vec3::new(4.15, -2.77, -0.7), 0.65, &materials),
-    );
-
-    // Fence sections preserve a clear opening at the front gate.
-    append_asset(
-        &mut objects,
-        create_fence(Vec3::new(0.0, -2.77, -4.85), 12.0, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_fence(Vec3::new(-4.8, -2.77, 4.85), 3.0, &materials),
-    );
-    append_asset(
-        &mut objects,
-        create_fence(Vec3::new(4.8, -2.77, 4.85), 3.0, &materials),
-    );
-    for x in [-1.55, 1.55] {
-        add_primitive(
-            &mut objects,
-            Box::new(Cube),
-            Vec3::new(x, -1.88, 4.45),
-            Vec3::zeros(),
-            Vec3::new(0.48, 1.65, 0.48),
-            materials.stone.clone(),
-        );
-        add_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            Vec3::new(x, -0.94, 4.45),
-            Vec3::zeros(),
-            Vec3::new(0.32, 0.32, 0.32),
-            materials.terracotta.clone(),
-        );
-    }
-    add_primitive(
-        &mut objects,
-        Box::new(Cube),
-        Vec3::new(0.0, -1.1, 4.45),
-        Vec3::zeros(),
-        Vec3::new(2.65, 0.18, 0.22),
-        materials.metal.clone(),
-    );
-    for x in [-1.05, -0.53, 0.0, 0.53, 1.05] {
-        add_primitive(
-            &mut objects,
-            Box::new(Cylinder),
-            Vec3::new(x, -1.88, 4.45),
-            Vec3::zeros(),
-            Vec3::new(0.055, 1.35, 0.055),
-            materials.metal.clone(),
-        );
-    }
-
-    for x in [-5.45, 5.45] {
-        append_asset(
-            &mut objects,
-            create_lantern(Vec3::new(x, -2.77, 3.25), 0.8, &materials),
-        );
-    }
-
-    // Decorative stones, flower clumps, and stepping stones.
-    for (x, z, scale) in [
-        (-3.7, 1.1, Vec3::new(0.9, 0.48, 0.68)),
-        (-3.0, 1.6, Vec3::new(0.58, 0.34, 0.5)),
-        (3.45, 1.3, Vec3::new(0.82, 0.44, 0.7)),
-        (3.9, 2.0, Vec3::new(0.5, 0.3, 0.55)),
-        (-5.6, -0.2, Vec3::new(0.7, 0.38, 0.55)),
-    ] {
-        add_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            Vec3::new(x, -2.43, z),
-            Vec3::zeros(),
-            scale,
-            materials.stone.clone(),
-        );
-    }
-
-    let flower_pink = Material::new(Color::new(229, 91, 143)).with_specular(28.0, 0.16);
-    let flower_yellow = Material::new(Color::new(248, 190, 65)).with_specular(24.0, 0.18);
-    for (index, (x, z)) in [
-        (-3.6, -0.1),
-        (-3.1, 0.35),
-        (-3.9, 0.65),
-        (3.25, -0.2),
-        (3.75, 0.25),
-        (3.2, 0.75),
-        (-2.9, 2.3),
-        (2.8, 2.6),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        add_primitive(
-            &mut objects,
-            Box::new(Cylinder),
-            Vec3::new(x, -2.38, z),
-            Vec3::zeros(),
-            Vec3::new(0.055, 0.62, 0.055),
-            materials.foliage.clone(),
-        );
-        add_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            Vec3::new(x, -2.03, z),
-            Vec3::zeros(),
-            Vec3::new(0.2, 0.2, 0.2),
-            if index % 2 == 0 {
-                flower_pink.clone()
-            } else {
-                flower_yellow.clone()
-            },
-        );
-    }
-
-    for (index, z) in [3.8, 3.0, 2.2, 1.4, 0.6, -0.2].into_iter().enumerate() {
-        add_primitive(
-            &mut objects,
-            Box::new(Cube),
-            Vec3::new(0.0, -2.64, z),
-            Vec3::zeros(),
-            Vec3::new(0.92, 0.12, 0.64),
-            if index % 2 == 0 {
-                materials.paper.clone()
-            } else {
-                materials.stone.clone()
-            },
-        );
-    }
-
-    // Low garden edging and warm lantern lighting.
-    for x in [-6.25, 6.25] {
-        add_primitive(
-            &mut objects,
-            Box::new(Cube),
-            Vec3::new(x, -2.52, 0.0),
-            Vec3::zeros(),
-            Vec3::new(0.22, 0.45, 9.9),
-            materials.wood.clone(),
-        );
-    }
-    add_primitive(
-        &mut objects,
-        Box::new(Cube),
-        Vec3::new(0.0, -2.52, -5.0),
-        Vec3::zeros(),
-        Vec3::new(12.5, 0.45, 0.22),
-        materials.wood.clone(),
-    );
-
-    let clue_material = Material::new(Color::new(232, 190, 104))
-        .with_specular(48.0, 0.45)
-        .with_emission(Color::new(255, 177, 74), 0.35);
-    let clue_indices = [
-        add_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            Vec3::new(-4.4, -2.34, 1.55),
-            Vec3::zeros(),
-            Vec3::new(0.28, 0.28, 0.28),
-            clue_material.clone(),
-        ),
-        add_primitive(
-            &mut objects,
-            Box::new(Cube),
-            Vec3::new(1.55, -2.47, -0.45),
-            Vec3::zeros(),
-            Vec3::new(0.34, 0.06, 0.25),
-            materials.paper.clone(),
-        ),
-        add_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            Vec3::new(0.0, -2.35, 2.65),
-            Vec3::zeros(),
-            Vec3::new(0.24, 0.24, 0.24),
-            clue_material,
-        ),
-    ];
-
-    let door_indices = append_asset(
-        &mut objects,
-        create_back_door(Vec3::new(0.0, -2.05, -3.505), 1.0, &materials),
-    );
-    let movable_index = add_primitive(
-        &mut objects,
-        Box::new(Cube),
-        Vec3::new(2.35, -2.48, 1.55),
-        Vec3::zeros(),
-        Vec3::new(0.42, 0.42, 0.42),
-        materials.wood.clone(),
-    );
-
-    let mut secret_room_indices = Vec::new();
-    for (position, size, material) in [
-        (
-            Vec3::new(0.0, -2.68, -5.15),
-            Vec3::new(3.8, 0.16, 3.1),
-            materials.stone.clone(),
-        ),
-        (
-            Vec3::new(-1.84, -1.25, -5.15),
-            Vec3::new(0.16, 2.8, 3.1),
-            materials.paper.clone(),
-        ),
-        (
-            Vec3::new(1.84, -1.25, -5.15),
-            Vec3::new(0.16, 2.8, 3.1),
-            materials.paper.clone(),
-        ),
-        (
-            Vec3::new(0.0, -1.25, -6.62),
-            Vec3::new(3.8, 2.8, 0.16),
-            materials.stone.clone(),
-        ),
-    ] {
-        secret_room_indices.push(add_primitive(
-            &mut objects,
-            Box::new(Cube),
-            position,
-            Vec3::zeros(),
-            size,
-            material,
-        ));
-    }
-    secret_room_indices.push(add_primitive(
-        &mut objects,
-        Box::new(Cube),
-        Vec3::new(-0.78, -1.45, -6.48),
-        Vec3::zeros(),
-        Vec3::new(0.72, 1.45, 0.08),
-        materials.metal.clone().with_reflectivity(0.72),
-    ));
-    secret_room_indices.push(add_primitive(
-        &mut objects,
-        Box::new(Sphere),
-        Vec3::new(0.1, -2.31, -5.25),
-        Vec3::zeros(),
-        Vec3::new(0.25, 0.3, 0.25),
-        materials.glass.clone(),
-    ));
-    secret_room_indices.push(add_primitive(
-        &mut objects,
-        Box::new(Cylinder),
-        Vec3::new(0.88, -2.22, -5.95),
-        Vec3::zeros(),
-        Vec3::new(0.12, 0.48, 0.12),
-        materials.warm_glow.clone(),
-    ));
-
-    let lights = vec![
-        Light::new(Vec3::new(-4.0, 7.0, 7.0), Color::new(255, 242, 220), 2.4),
-        Light::new(
-            Vec3::new(-5.45, -0.15, 3.25),
-            Color::new(255, 190, 104),
-            0.85,
-        ),
-        Light::new(
-            Vec3::new(5.45, -0.15, 3.25),
-            Color::new(255, 190, 104),
-            0.85,
-        ),
-        Light::new(Vec3::new(0.88, -1.72, -5.8), Color::new(255, 173, 92), 0.65),
-    ];
-
-    let mut skybox = Skybox::new(Color::from_hex(SKY_COLOR));
-    for (phase, paths) in [
-        (
-            crate::core::scene::DayPhase::Day,
-            vec![
-                "assets/sky_day/1.png",
-                "assets/sky_day/2.png",
-                "assets/sky_day/3.png",
-                "assets/sky_day/4.png",
-            ],
-        ),
-        (
-            crate::core::scene::DayPhase::Sunset,
-            vec![
-                "assets/sky_sunset/1.png",
-                "assets/sky_sunset/2.png",
-                "assets/sky_sunset/3.png",
-                "assets/sky_sunset/4.png",
-            ],
-        ),
-        (
-            crate::core::scene::DayPhase::Night,
-            vec![
-                "assets/sky_night/1.png",
-                "assets/sky_night/2.png",
-                "assets/sky_night/3.png",
-                "assets/sky_night/4.png",
-            ],
-        ),
-        (
-            crate::core::scene::DayPhase::Dawn,
-            vec![
-                "assets/sky_dawn/1.png",
-                "assets/sky_dawn/2.png",
-                "assets/sky_dawn/3.png",
-                "assets/sky_dawn/4.png",
-            ],
-        ),
-    ] {
-        if let Err(error) = skybox.load_phase_layers(phase, &paths) {
-            eprintln!("Could not load sky layers for {:?}: {}", phase, error);
-        }
-    }
-
-    let mut scene = Scene::new(objects, lights, camera, skybox);
-    for (clue_index, object_index) in clue_indices.into_iter().enumerate() {
-        scene.register_interactive(object_index, InteractiveKind::Clue(clue_index), true);
-    }
-    for object_index in door_indices {
-        scene.register_door_part(object_index);
-    }
-    scene.register_interactive(movable_index, InteractiveKind::Movable, true);
-    for object_index in secret_room_indices {
-        scene.register_secret_room_object(object_index);
-    }
-    scene
-}
-
 fn append_asset(objects: &mut Vec<Box<dyn RayIntersect>>, asset: Vec<Object>) -> Vec<usize> {
     let start = objects.len();
     objects.extend(
@@ -744,80 +444,207 @@ fn append_asset(objects: &mut Vec<Box<dyn RayIntersect>>, asset: Vec<Object>) ->
     (start..objects.len()).collect()
 }
 
-fn phase_name(phase: crate::core::scene::DayPhase) -> &'static str {
-    match phase {
-        crate::core::scene::DayPhase::Day => "DAY",
-        crate::core::scene::DayPhase::Sunset => "SUNSET",
-        crate::core::scene::DayPhase::Night => "NIGHT",
-        crate::core::scene::DayPhase::Dawn => "DAWN",
-    }
+fn create_shadow_test_scene() -> Scene {
+    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
+    add_primitive(
+        &mut objects,
+        Box::new(Plane),
+        Vec3::zeros(),
+        Vec3::zeros(),
+        Vec3::new(8.0, 1.0, 8.0),
+        Material::new(Color::new(175, 168, 148)).with_albedo(0.85),
+    );
+    add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(-1.05, 0.65, 0.0),
+        Vec3::zeros(),
+        Vec3::new(1.3, 1.3, 1.3),
+        Material::new(Color::new(174, 112, 75)).with_albedo(0.82),
+    );
+    add_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        Vec3::new(1.05, 0.52, 0.15),
+        Vec3::zeros(),
+        Vec3::new(0.52, 0.52, 0.52),
+        Material::new(Color::new(94, 133, 165)).with_albedo(0.82),
+    );
+    let camera = Camera::new(
+        Vec3::new(4.0, 4.8, 8.0),
+        Vec3::new(0.0, 0.45, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+    );
+    let light = Light::new(Vec3::new(-3.0, 6.0, 4.0), Color::new(255, 247, 230), 1.0);
+    let mut scene = Scene::new(
+        objects,
+        vec![light],
+        camera,
+        Skybox::new(Color::new(80, 108, 140)),
+    );
+    scene.ambient_intensity = 0.18;
+    scene
 }
 
-fn update_window_title(window: &mut Window, scene: &Scene) {
-    let door_status = if scene.game_state.door_unlocked {
-        if scene.game_state.secret_room_open {
-            "Open"
-        } else {
-            "Unlocked"
-        }
-    } else {
-        "Locked"
-    };
-    window.set_title(&format!(
-        "La Puerta Trasera | Día {} | {} | Clues: {}/3 | Door: {}",
-        scene.day_count,
-        phase_name(scene.day_phase),
-        scene.game_state.clues_count(),
-        door_status,
+fn create_material_test_scene() -> Scene {
+    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
+    let materials = AssetMaterials::new();
+    add_primitive(
+        &mut objects,
+        Box::new(Plane),
+        Vec3::new(0.0, -0.04, 0.0),
+        Vec3::zeros(),
+        Vec3::new(9.0, 1.0, 5.0),
+        Material::new(Color::new(120, 120, 120)).with_albedo(0.8),
+    );
+
+    let material_samples = [
+        (Vec3::new(-3.2, 0.72, 0.0), materials.wood.clone()),
+        (Vec3::new(-1.6, 0.72, 0.0), materials.paper.clone()),
+        (Vec3::new(0.0, 0.72, 0.0), materials.stone.clone()),
+        (Vec3::new(1.6, 0.72, 0.0), materials.metal.clone()),
+    ];
+    for (position, material) in material_samples {
+        add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            position,
+            Vec3::zeros(),
+            Vec3::new(1.0, 1.0, 1.0),
+            material,
+        );
+    }
+
+    let mut glass = materials.glass.clone();
+    glass.texture = None;
+    add_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        Vec3::new(3.2, 0.72, 0.0),
+        Vec3::zeros(),
+        Vec3::new(0.58, 0.72, 0.58),
+        glass,
+    );
+
+    let checker = Arc::new(Texture::procedural(
+        crate::materials::texture::ProceduralTexture::Checkerboard,
     ));
+    let mut checker_material = Material::new(Color::new(255, 255, 255)).with_texture(checker);
+    checker_material.albedo = 1.0;
+    add_primitive(
+        &mut objects,
+        Box::new(Plane),
+        Vec3::new(3.2, 0.95, -0.85),
+        Vec3::new(PI / 2.0, 0.0, 0.0),
+        Vec3::new(1.8, 1.0, 2.0),
+        checker_material,
+    );
+
+    let camera = Camera::new(
+        Vec3::new(4.0, 4.0, 10.0),
+        Vec3::new(0.0, 0.65, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+    );
+    let light = Light::new(Vec3::new(-2.0, 7.0, 5.0), Color::new(255, 248, 232), 1.0);
+    let mut scene = Scene::new(
+        objects,
+        vec![light],
+        camera,
+        Skybox::new(Color::new(95, 125, 150)),
+    );
+    scene.ambient_intensity = 0.14;
+    scene
+}
+
+fn save_test_render(framebuffer: &Framebuffer, path: &str) -> Result<(), image::ImageError> {
+    let mut rgb = Vec::with_capacity(framebuffer.buffer.len() * 3);
+    for pixel in &framebuffer.buffer {
+        rgb.push(((pixel >> 16) & 0xff) as u8);
+        rgb.push(((pixel >> 8) & 0xff) as u8);
+        rgb.push((pixel & 0xff) as u8);
+    }
+    image::save_buffer(
+        path,
+        &rgb,
+        framebuffer.width as u32,
+        framebuffer.height as u32,
+        image::ColorType::Rgb8,
+    )
 }
 
 fn main() {
+    let test_mode = std::env::args().nth(1);
+    if matches!(
+        test_mode.as_deref(),
+        Some("--render-day1-flat" | "--render-day1-textured" | "--render-day1-rear")
+    ) {
+        let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+        let rear_view = test_mode.as_deref() == Some("--render-day1-rear");
+        let camera = if rear_view {
+            Camera::new(
+                Vec3::new(-3.2, 5.8, -8.5),
+                Vec3::new(0.0, 0.35, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+            )
+        } else {
+            create_camera()
+        };
+        let scene = create_scene(camera);
+        let flat = test_mode.as_deref() == Some("--render-day1-flat");
+        let mode = if flat { 2 } else { 0 };
+        let path = if flat {
+            "target/day1-flat.png"
+        } else if rear_view {
+            "target/day1-rear.png"
+        } else {
+            "target/day1-textured.png"
+        };
+        render(&mut framebuffer, &scene, mode);
+        match save_test_render(&framebuffer, path) {
+            Ok(()) => println!("Saved Day 1 render to {path}"),
+            Err(error) => eprintln!("Could not save Day 1 render: {error}"),
+        }
+        return;
+    }
+    if matches!(
+        test_mode.as_deref(),
+        Some("--test-shadows" | "--test-materials")
+    ) {
+        let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+        let (scene, output_path) = if test_mode.as_deref() == Some("--test-materials") {
+            (create_material_test_scene(), "target/material-test.png")
+        } else {
+            (create_shadow_test_scene(), "target/shadow-test.png")
+        };
+        let test_render_mode = if test_mode.as_deref() == Some("--test-materials") {
+            0
+        } else {
+            2
+        };
+        render(&mut framebuffer, &scene, test_render_mode);
+        match save_test_render(&framebuffer, output_path) {
+            Ok(()) => println!("Saved renderer test to {output_path}"),
+            Err(error) => eprintln!("Could not save renderer test: {error}"),
+        }
+        return;
+    }
+
     let frame_delay = Duration::from_millis(16);
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-    let mut window = Window::new("Lakitu", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
+    let mut window = Window::new(
+        "La Puerta Trasera | Día 1",
+        WIDTH,
+        HEIGHT,
+        WindowOptions::default(),
+    )
+    .unwrap();
     let mut scene = create_scene(create_camera());
 
     let mut camera_moved = true;
     let mut render_mode = 0;
     let mut last_mouse_position: Option<(f32, f32)> = None;
-    let mut mouse_press_position: Option<(f32, f32)> = None;
-    let mut was_mouse_down = false;
-    update_window_title(&mut window, &scene);
-
-    let mut last_time = std::time::Instant::now();
-    let mut phase_timer = 0.0_f32;
-    let phase_duration = 75.0_f32; // 5 minutes (300s) / 4 phases = 75s
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let now = std::time::Instant::now();
-        let delta = now.duration_since(last_time).as_secs_f32();
-        last_time = now;
-
-        phase_timer += delta;
-        if phase_timer >= phase_duration {
-            phase_timer -= phase_duration;
-            scene.advance_day_phase();
-            camera_moved = true;
-            update_window_title(&mut window, &scene);
-        }
-
-        let transition_duration = 5.0_f32; // 5 seconds crossfade
-        let blend = if phase_timer < transition_duration {
-            camera_moved = true;
-            phase_timer / transition_duration
-        } else {
-            1.0
-        };
-        scene.update_transition(blend);
-
-        if window.is_key_pressed(Key::Tab, minifb::KeyRepeat::No) {
-            scene.advance_day_phase();
-            phase_timer = 0.0; // Reset timer when manually skipping
-            camera_moved = true;
-            update_window_title(&mut window, &scene);
-        }
-
         if window.is_key_pressed(Key::Key1, minifb::KeyRepeat::No) {
             render_mode = 0;
             camera_moved = true;
@@ -844,26 +671,9 @@ fn main() {
             }
         }
 
-        if let Some(selected) = scene.game_state.selected_object {
-            let movement = [
-                (Key::W, Vec3::new(0.0, 0.0, -0.06)),
-                (Key::S, Vec3::new(0.0, 0.0, 0.06)),
-                (Key::A, Vec3::new(-0.06, 0.0, 0.0)),
-                (Key::D, Vec3::new(0.06, 0.0, 0.0)),
-            ];
-            for (key, delta) in movement {
-                if window.is_key_down(key) && scene.move_interactive(selected, delta) {
-                    camera_moved = true;
-                }
-            }
-        }
-
         let mouse_down = window.get_mouse_down(MouseButton::Left);
-        let mouse_position = window.get_mouse_pos(MouseMode::Clamp);
+        let mouse_position = window.get_mouse_pos(MouseMode::Pass);
         if mouse_down {
-            if !was_mouse_down {
-                mouse_press_position = mouse_position;
-            }
             if let (Some((x, y)), Some((last_x, last_y))) = (mouse_position, last_mouse_position) {
                 let drag_sensitivity = 0.006;
                 let delta_yaw = -(x - last_x) * drag_sensitivity;
@@ -875,59 +685,8 @@ fn main() {
             }
             last_mouse_position = mouse_position;
         } else {
-            if was_mouse_down {
-                let click_position = mouse_position.or(mouse_press_position);
-                if let (Some((press_x, press_y)), Some((x, y))) =
-                    (mouse_press_position, click_position)
-                {
-                    if (x - press_x).powi(2) + (y - press_y).powi(2) <= 25.0 {
-                        if let Some(hit) = pick(&scene, &scene.camera, x, y, WIDTH, HEIGHT, FOV) {
-                            let id = ObjectId(hit.object_index);
-                            scene.game_state.selected_object = Some(id);
-                            match scene.interaction_for(id) {
-                                Some(InteractiveKind::Clue(_)) => {
-                                    if scene.discover_clue(id) {
-                                        println!(
-                                            "Clue found: {}/3",
-                                            scene.game_state.clues_count()
-                                        );
-                                        if scene.game_state.door_unlocked {
-                                            println!("The back door is unlocked.");
-                                        }
-                                        camera_moved = true;
-                                    }
-                                }
-                                Some(InteractiveKind::BackDoor) => {
-                                    if scene.toggle_secret_room() {
-                                        println!(
-                                            "Back door {}.",
-                                            if scene.game_state.secret_room_open {
-                                                "opened"
-                                            } else {
-                                                "closed"
-                                            }
-                                        );
-                                        camera_moved = true;
-                                    } else {
-                                        println!("The back door is locked.");
-                                    }
-                                }
-                                Some(InteractiveKind::Movable) => {
-                                    println!("Movable object selected. Use WASD to move it.");
-                                }
-                                None => println!("Selected object {}.", id.0),
-                            }
-                        } else {
-                            scene.game_state.selected_object = None;
-                        }
-                        update_window_title(&mut window, &scene);
-                    }
-                }
-            }
-            mouse_press_position = None;
             last_mouse_position = None;
         }
-        was_mouse_down = mouse_down;
 
         if let Some((_, scroll_delta)) = window.get_scroll_wheel() {
             if scroll_delta != 0.0 {
@@ -945,5 +704,111 @@ fn main() {
             .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)
             .unwrap();
         std::thread::sleep(frame_delay);
+    }
+}
+
+#[cfg(test)]
+mod shadow_tests {
+    use super::cast_shadow;
+    use crate::core::camera::Camera;
+    use crate::core::light::Light;
+    use crate::core::object::Object;
+    use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
+    use crate::core::scene::{Scene, Skybox};
+    use crate::core::transform::Transform;
+    use crate::materials::color::Color;
+    use crate::shapes::cube::Cube;
+    use crate::shapes::cylinder::Cylinder;
+    use crate::shapes::plane::Plane;
+    use nalgebra_glm::Vec3;
+
+    fn shadow_scene(occluder: Option<Object>) -> (Scene, Intersect, Light) {
+        let material = Material::new(Color::new(160, 160, 160));
+        let receiver = Object::new(
+            Box::new(Plane),
+            Transform::new(Vec3::zeros(), Vec3::zeros(), Vec3::new(8.0, 1.0, 8.0)),
+            material.clone(),
+        );
+        let mut objects: Vec<Box<dyn RayIntersect>> = vec![Box::new(receiver)];
+        if let Some(occluder) = occluder {
+            objects.push(Box::new(occluder));
+        }
+        let light = Light::new(Vec3::new(0.0, 5.0, 0.0), Color::new(255, 255, 255), 1.0);
+        let camera = Camera::new(
+            Vec3::new(0.0, 4.0, 8.0),
+            Vec3::zeros(),
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        let scene = Scene::new(
+            objects,
+            vec![Light::new(
+                Vec3::new(0.0, 5.0, 0.0),
+                Color::new(255, 255, 255),
+                1.0,
+            )],
+            camera,
+            Skybox::new(Color::new(40, 50, 70)),
+        );
+        let hit = Intersect {
+            object_index: 0,
+            point: Vec3::zeros(),
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            distance: 0.0,
+            material,
+            u: 0.5,
+            v: 0.5,
+        };
+        (scene, hit, light)
+    }
+
+    fn test_occluder(shape: Box<dyn crate::core::object::Shape>, center_y: f32) -> Object {
+        Object::new(
+            shape,
+            Transform::new(
+                Vec3::new(0.0, center_y, 0.0),
+                Vec3::zeros(),
+                Vec3::new(0.8, 0.8, 0.8),
+            ),
+            Material::new(Color::new(100, 100, 100)),
+        )
+    }
+
+    #[test]
+    fn objects_behind_the_hit_do_not_cast_shadow() {
+        let (scene, hit, light) = shadow_scene(Some(test_occluder(Box::new(Cylinder), -1.0)));
+        assert!(!cast_shadow(
+            &hit,
+            &Vec3::new(0.0, 1.0, 0.0),
+            &light,
+            &scene
+        ));
+    }
+
+    #[test]
+    fn receiver_does_not_shadow_itself() {
+        let (scene, hit, light) = shadow_scene(None);
+        assert!(!cast_shadow(
+            &hit,
+            &Vec3::new(0.0, 1.0, 0.0),
+            &light,
+            &scene
+        ));
+    }
+
+    #[test]
+    fn object_between_hit_and_light_casts_shadow() {
+        let (scene, hit, light) = shadow_scene(Some(test_occluder(Box::new(Cube), 2.0)));
+        assert!(cast_shadow(&hit, &Vec3::new(0.0, 1.0, 0.0), &light, &scene));
+    }
+
+    #[test]
+    fn objects_beyond_light_do_not_cast_shadow() {
+        let (scene, hit, light) = shadow_scene(Some(test_occluder(Box::new(Cube), 6.0)));
+        assert!(!cast_shadow(
+            &hit,
+            &Vec3::new(0.0, 1.0, 0.0),
+            &light,
+            &scene
+        ));
     }
 }

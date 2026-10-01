@@ -94,6 +94,7 @@ impl Material {
 
 #[derive(Debug, Clone)]
 pub struct Intersect {
+    pub object_index: usize,
     pub point: Vec3,
     pub normal: Vec3,
     pub distance: f32,

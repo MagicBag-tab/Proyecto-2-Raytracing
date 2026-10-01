@@ -25,10 +25,7 @@ fn wood() -> Material {
     Material::new(Color::new(150, 86, 42))
         .with_albedo(0.82)
         .with_specular(24.0, 0.12)
-        .with_texture(Arc::new(Texture::load_or_procedural(
-            "assets/textures/wood.png",
-            ProceduralTexture::Wood,
-        )))
+        .with_texture(Arc::new(Texture::procedural(ProceduralTexture::Wood)))
 }
 
 fn stone() -> Material {
@@ -69,7 +66,7 @@ fn paper() -> Material {
         .with_albedo(0.96)
         .with_specular(8.0, 0.025)
         .with_texture(Arc::new(Texture::load_or_procedural(
-            "assets/textures/paper.png",
+            "assets/paredes/vecteezy_texture-from-japanese-paper_3162046.jpg",
             ProceduralTexture::Paper,
         )))
 }

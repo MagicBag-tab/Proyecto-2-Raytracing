@@ -113,18 +113,20 @@ impl Skybox {
 
         for (i, texture) in layers.iter().enumerate() {
             let radius = *radii.get(i).unwrap_or(&50.0);
-            
+
             let ox = origin.x;
             let oz = origin.z;
             let dx = direction.x;
             let dz = direction.z;
 
             let a = dx * dx + dz * dz;
-            if a < 1e-6 { continue; }
-            
+            if a < 1e-6 {
+                continue;
+            }
+
             let b = 2.0 * (ox * dx + oz * dz);
             let c = ox * ox + oz * oz - radius * radius;
-            
+
             let discriminant = b * b - 4.0 * a * c;
             if discriminant > 0.0 {
                 let t = (-b + discriminant.sqrt()) / (2.0 * a);
@@ -132,10 +134,10 @@ impl Skybox {
                     let p = origin + direction * t;
                     let u = 0.5 + p.z.atan2(p.x) / (2.0 * PI);
                     let v = 0.5 - direction.y.clamp(-1.0, 1.0).asin() / PI;
-                    
+
                     let tex_color = texture.get_color(u, v);
                     let tex_alpha = texture.get_alpha(u, v);
-                    
+
                     current_color = current_color * (1.0 - tex_alpha) + tex_color * tex_alpha;
                 }
             }
@@ -156,8 +158,8 @@ impl Skybox {
 }
 
 fn horizon_component(horizon: Color, zenith: Color, blend: f32, channel: usize) -> f32 {
-    let horizon = horizon.to_hex();
-    let zenith = zenith.to_hex();
+    let horizon = horizon.to_hex_unmapped();
+    let zenith = zenith.to_hex_unmapped();
     let shift = 16 - channel * 8;
     let start = ((horizon >> shift) & 0xff) as f32;
     let end = ((zenith >> shift) & 0xff) as f32;
@@ -179,6 +181,7 @@ pub struct Scene {
     hidden_objects: HashSet<ObjectId>,
     door_objects: Vec<ObjectId>,
     secret_room_objects: Vec<ObjectId>,
+    pub appears_on_day: HashMap<ObjectId, u32>,
 }
 
 impl Scene {
@@ -203,6 +206,7 @@ impl Scene {
             hidden_objects: HashSet::new(),
             door_objects: Vec::new(),
             secret_room_objects: Vec::new(),
+            appears_on_day: HashMap::new(),
         };
         scene.set_day_phase(DayPhase::Day);
         scene.update_transition(1.0);
@@ -317,7 +321,24 @@ impl Scene {
         }
     }
 
-    fn refresh_clue_visibility(&mut self) {
+    pub fn refresh_visibility(&mut self) {
+        // Day-based progression objects
+        let progression: Vec<_> = self
+            .appears_on_day
+            .iter()
+            .map(|(&id, &day)| (id, day))
+            .collect();
+        for (id, day) in progression {
+            // Note: we don't want to override secret room visibility if it's a secret room object
+            if !self.secret_room_objects.contains(&id)
+                && !self.door_objects.contains(&id)
+                && !self.interactive_objects.contains_key(&id)
+            {
+                self.set_object_visible(id, self.day_count >= day);
+            }
+        }
+
+        // Clues
         let clues: Vec<_> = self
             .interactive_objects
             .iter()
@@ -327,7 +348,9 @@ impl Scene {
             .collect();
         for (id, kind) in clues {
             let visible = self.kind_is_visible(kind);
-            self.set_object_visible(id, visible);
+            // Additionally check if the clue has a day requirement
+            let day_req = self.appears_on_day.get(&id).copied().unwrap_or(1);
+            self.set_object_visible(id, visible && self.day_count >= day_req);
         }
     }
 
@@ -336,27 +359,27 @@ impl Scene {
         self.day_phase = phase;
         self.skybox.previous_phase = self.previous_phase;
         self.skybox.active_phase = phase;
-        self.refresh_clue_visibility();
+        self.refresh_visibility();
     }
 
     fn phase_parameters(phase: DayPhase) -> (Color, f32, f32, f32, f32) {
         match phase {
-            DayPhase::Day => (Color::new(255, 247, 226), 2.4, 0.0, 0.35, 0.0),
-            DayPhase::Sunset => (Color::new(255, 143, 91), 1.65, 0.48, 0.24, 0.65),
-            DayPhase::Night => (Color::new(91, 121, 191), 0.38, 1.25, 0.13, 1.0),
-            DayPhase::Dawn => (Color::new(255, 185, 140), 1.2, 0.2, 0.2, 0.3),
+            DayPhase::Day => (Color::new(255, 247, 226), 1.0, 0.0, 0.16, 0.0),
+            DayPhase::Sunset => (Color::new(255, 143, 91), 0.72, 0.28, 0.12, 0.5),
+            DayPhase::Night => (Color::new(91, 121, 191), 0.26, 0.62, 0.08, 0.8),
+            DayPhase::Dawn => (Color::new(255, 185, 140), 0.55, 0.16, 0.12, 0.25),
         }
     }
 
     pub fn update_transition(&mut self, blend: f32) {
         self.skybox.blend_factor = blend;
-        
+
         let prev = Self::phase_parameters(self.previous_phase);
         let curr = Self::phase_parameters(self.day_phase);
 
         let blend = blend.clamp(0.0, 1.0);
         let sun_color = prev.0 * (1.0 - blend) + curr.0 * blend;
-        
+
         let sun_intensity = prev.1 * (1.0 - blend) + curr.1 * blend;
         let lantern_intensity = prev.2 * (1.0 - blend) + curr.2 * blend;
         let ambient = prev.3 * (1.0 - blend) + curr.3 * blend;

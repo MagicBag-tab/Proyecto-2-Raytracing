@@ -64,9 +64,20 @@ impl RayIntersect for Object {
                 &(self.normal_matrix * vec4(local_normal.x, local_normal.y, local_normal.z, 0.0)),
             )
             .normalize();
-            let distance = nalgebra_glm::magnitude(&(world_point - ray_origin));
+            let direction_length = ray_direction.magnitude();
+            if direction_length <= f32::EPSILON || !direction_length.is_finite() {
+                return None;
+            }
+            let distance = nalgebra_glm::dot(
+                &(world_point - ray_origin),
+                &(ray_direction / direction_length),
+            );
+            if distance <= 0.0 || !distance.is_finite() {
+                return None;
+            }
 
             Some(Intersect {
+                object_index: usize::MAX,
                 point: world_point,
                 normal: world_normal,
                 distance,
@@ -80,18 +91,7 @@ impl RayIntersect for Object {
     }
 
     fn ray_intersect_distance(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<f32> {
-        let local_origin = vec4_to_vec3(
-            &(self.inverse_matrix * vec4(ray_origin.x, ray_origin.y, ray_origin.z, 1.0)),
-        );
-        let local_direction = vec4_to_vec3(
-            &(self.inverse_matrix * vec4(ray_direction.x, ray_direction.y, ray_direction.z, 0.0)),
-        );
-        let local_dir_norm = local_direction.normalize();
-        let (t, _, _, _) = self.shape.local_intersect(&local_origin, &local_dir_norm)?;
-        let local_point = local_origin + local_dir_norm * t;
-        let world_point = vec4_to_vec3(
-            &(self.model_matrix * vec4(local_point.x, local_point.y, local_point.z, 1.0)),
-        );
-        Some(nalgebra_glm::magnitude(&(world_point - ray_origin)))
+        self.ray_intersect(ray_origin, ray_direction)
+            .map(|intersect| intersect.distance)
     }
 }
