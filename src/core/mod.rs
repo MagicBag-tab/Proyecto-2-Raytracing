@@ -7,3 +7,5 @@ pub mod picking;
 pub mod ray_intersect;
 pub mod scene;
 pub mod transform;
+
+pub mod hud;

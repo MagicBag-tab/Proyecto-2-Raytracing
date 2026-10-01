@@ -9,7 +9,7 @@ use crate::assets::{
     build_day2_flowers, build_day3_decorations, build_day5_higanbana, build_day6_clue,
     build_day7_clue,
 };
-use crate::core::interaction::InteractiveKind;
+use crate::core::interaction::{InteractiveKind, PointerGesture};
 use crate::core::picking::pick;
 
 use crate::core::scene::DayPhase;
@@ -705,46 +705,30 @@ fn save_test_render(framebuffer: &Framebuffer, path: &str) -> Result<(), image::
 
 fn main() {
     let test_mode = std::env::args().nth(1);
-    if matches!(
-        test_mode.as_deref(),
-        Some(
-            "--render-day1-flat"
-                | "--render-day1-textured"
-                | "--render-day1-rear"
-                | "--render-day2"
-                | "--render-day3"
-                | "--render-day4"
-                | "--render-day5"
-                | "--render-day6"
-                | "--render-day7"
-        )
-    ) {
+    let requested_day = test_mode.as_deref()
+        .and_then(|arg| arg.strip_prefix("--render-day"))
+        .and_then(|day| day.parse::<u32>().ok())
+        .filter(|day| (1..=7).contains(day));
+    let legacy_render = matches!(test_mode.as_deref(),
+        Some("--render-day1-flat" | "--render-day1-textured" | "--render-day1-rear"));
+    if requested_day.is_some() || legacy_render {
         let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
         let rear_view = test_mode.as_deref() == Some("--render-day1-rear");
         let camera = if rear_view {
-            Camera::new(
-                Vec3::new(-3.2, 5.8, -8.5),
-                Vec3::new(0.0, 0.35, 0.0),
-                Vec3::new(0.0, 1.0, 0.0),
-            )
-        } else {
-            create_camera()
-        };
-        let scene = create_scene(camera);
+            Camera::new(Vec3::new(-3.2, 5.8, -8.5), Vec3::new(0.0, 0.35, 0.0), Vec3::y())
+        } else { create_camera() };
+        let mut scene = create_scene(camera);
+        let day = requested_day.unwrap_or(1);
+        scene.set_story_day(day);
         let flat = test_mode.as_deref() == Some("--render-day1-flat");
-        let mode = if flat { 2 } else { 0 };
-        let path = if flat {
-            "target/day1-flat.png"
-        } else if rear_view {
-            "target/day1-rear.png"
-        } else {
-            "target/day1-textured.png"
-        };
-        render(&mut framebuffer, &scene, mode);
-        match save_test_render(&framebuffer, path) {
-            Ok(()) => println!("Saved Day 1 render to {path}"),
-            Err(error) => eprintln!("Could not save Day 1 render: {error}"),
-        }
+        let path = if requested_day.is_some() { format!("target/day{day}.png") }
+            else if flat { "target/day1-flat.png".into() }
+            else if rear_view { "target/day1-rear.png".into() }
+            else { "target/day1-textured.png".into() };
+        render(&mut framebuffer, &scene, if flat { 2 } else { 0 });
+        crate::core::hud::draw(&mut framebuffer, &scene);
+        save_test_render(&framebuffer, &path).expect("Could not save day render");
+        println!("Saved day {} ({:?}) to {}", scene.day_count, scene.day_phase, path);
         return;
     }
     if matches!(
@@ -786,6 +770,7 @@ fn main() {
     let mut last_mouse_position: Option<(f32, f32)> = None;
 
     let mut was_mouse_down = false;
+    let mut pointer = PointerGesture::default();
 
     // Helper for title updates
     let get_title = |scene: &Scene| -> String {
@@ -797,11 +782,7 @@ fn main() {
             DayPhase::Night => "Noche",
         };
         let clues = scene.game_state.clues_count();
-        let clue_str = if clues > 0 {
-            format!(" | PISTAS {}/3", clues)
-        } else {
-            String::new()
-        };
+        let clue_str = format!(" | PISTAS {}/3", clues);
         format!("La Puerta Trasera — DÍA {} ({}){}", day, phase, clue_str)
     };
 
@@ -862,8 +843,7 @@ fn main() {
         .enumerate()
         {
             if window.is_key_pressed(*key, minifb::KeyRepeat::No) {
-                scene.day_count = (i + 1) as u32;
-                scene.refresh_visibility();
+                scene.set_story_day((i + 1) as u32);
                 camera_moved = true;
                 window.set_title(&format!("La Puerta Trasera — Día {}", scene.day_count));
             }
@@ -886,7 +866,11 @@ fn main() {
         let mouse_position = window.get_mouse_pos(MouseMode::Pass);
 
         if mouse_down && !was_mouse_down {
-            if let Some((x, y)) = mouse_position {
+            pointer.press(mouse_position);
+        }
+        if mouse_down { pointer.update(mouse_position); }
+        if !mouse_down && was_mouse_down {
+            if let Some((x, y)) = pointer.release(mouse_position) {
                 if let Some(hit) = pick(
                     &scene,
                     &scene.camera,
@@ -900,8 +884,7 @@ fn main() {
                     if let Some(kind) = scene.interaction_for(id) {
                         match kind {
                             InteractiveKind::Clue(i) => {
-                                if scene.game_state.found_clue(i) {
-                                    scene.refresh_visibility();
+                                if scene.discover_clue(id) {
                                     camera_moved = true;
                                     window.set_title(&get_title(&scene));
                                     println!("Pista {} encontrada!", i + 1);
@@ -931,7 +914,7 @@ fn main() {
                 let drag_sensitivity = 0.006;
                 let delta_yaw = -(x - last_x) * drag_sensitivity;
                 let delta_pitch = (y - last_y) * drag_sensitivity;
-                if delta_yaw != 0.0 || delta_pitch != 0.0 {
+                if pointer.dragging && (delta_yaw != 0.0 || delta_pitch != 0.0) {
                     scene.camera.orbit(delta_yaw, delta_pitch);
                     camera_moved = true;
                 }
@@ -950,6 +933,7 @@ fn main() {
 
         if camera_moved {
             render(&mut framebuffer, &scene, render_mode);
+            crate::core::hud::draw(&mut framebuffer, &scene);
             camera_moved = false;
         }
 

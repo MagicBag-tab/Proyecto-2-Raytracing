@@ -185,6 +185,17 @@ pub struct Scene {
 }
 
 impl Scene {
+    /// Shared by the interactive day controls and the offline renders.
+    pub fn set_story_day(&mut self, day: u32) {
+        self.day_count = day.clamp(1, 7);
+        self.set_day_phase(match self.day_count {
+            1..=3 => DayPhase::Day,
+            4..=5 => DayPhase::Sunset,
+            _ => DayPhase::Night,
+        });
+        self.update_transition(1.0);
+    }
+
     pub fn new(
         objects: Vec<Box<dyn RayIntersect>>,
         lights: Vec<Light>,
@@ -263,13 +274,21 @@ impl Scene {
     }
 
     pub fn discover_clue(&mut self, id: ObjectId) -> bool {
+        if !self.is_object_visible(id) {
+            return false;
+        }
         let Some(InteractiveKind::Clue(index)) = self.interaction_for(id) else {
             return false;
         };
+        if !self.kind_is_visible(InteractiveKind::Clue(index))
+            || self.day_count < self.appears_on_day.get(&id).copied().unwrap_or(1)
+        {
+            return false;
+        }
         if !self.game_state.found_clue(index) {
             return false;
         }
-        self.set_object_visible(id, false);
+        self.refresh_visibility();
         true
     }
 
