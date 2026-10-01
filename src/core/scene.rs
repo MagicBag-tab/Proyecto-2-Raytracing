@@ -38,20 +38,20 @@ impl DayPhase {
 
 pub struct Skybox {
     pub color: Color,
-    horizon: Color,
-    zenith: Color,
     phase_layers: [Vec<Texture>; 4],
-    active_phase: DayPhase,
+    pub active_phase: DayPhase,
+    pub previous_phase: DayPhase,
+    pub blend_factor: f32,
 }
 
 impl Skybox {
     pub fn new(color: Color) -> Self {
         Self {
             color,
-            horizon: Color::new(34, 48, 64),
-            zenith: Color::new(106, 145, 181),
             phase_layers: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             active_phase: DayPhase::Day,
+            previous_phase: DayPhase::Day,
+            blend_factor: 1.0,
         }
     }
 
@@ -69,9 +69,8 @@ impl Skybox {
         Ok(())
     }
 
-    fn set_phase(&mut self, phase: DayPhase) {
-        self.active_phase = phase;
-        let (horizon, zenith, tint) = match phase {
+    fn skybox_parameters(phase: DayPhase) -> (Color, Color, Color) {
+        match phase {
             DayPhase::Day => (
                 Color::new(151, 198, 222),
                 Color::new(62, 137, 202),
@@ -92,23 +91,20 @@ impl Skybox {
                 Color::new(106, 115, 181),
                 Color::new(245, 230, 240),
             ),
-        };
-        self.horizon = horizon;
-        self.zenith = zenith;
-        self.color = tint;
+        }
     }
 
-    pub fn sample(&self, origin: &Vec3, direction: &Vec3) -> Color {
+    fn sample_phase(&self, phase: DayPhase, origin: &Vec3, direction: &Vec3) -> Color {
+        let (horizon, zenith, tint) = Self::skybox_parameters(phase);
         let blend = ((direction.y + 0.15) / 0.85).clamp(0.0, 1.0);
         let mut current_color = Color::new(
-            horizon_component(self.horizon, self.zenith, blend, 0) as u8,
-            horizon_component(self.horizon, self.zenith, blend, 1) as u8,
-            horizon_component(self.horizon, self.zenith, blend, 2) as u8,
+            horizon_component(horizon, zenith, blend, 0) as u8,
+            horizon_component(horizon, zenith, blend, 1) as u8,
+            horizon_component(horizon, zenith, blend, 2) as u8,
         );
-        let tint = self.color;
         current_color = current_color * 0.82 + tint * 0.18;
 
-        let layers = &self.phase_layers[self.active_phase.index()];
+        let layers = &self.phase_layers[phase.index()];
         if layers.is_empty() {
             return current_color;
         }
@@ -147,6 +143,16 @@ impl Skybox {
 
         current_color
     }
+
+    pub fn sample(&self, origin: &Vec3, direction: &Vec3) -> Color {
+        if self.blend_factor >= 1.0 || self.previous_phase == self.active_phase {
+            return self.sample_phase(self.active_phase, origin, direction);
+        }
+        let prev = self.sample_phase(self.previous_phase, origin, direction);
+        let curr = self.sample_phase(self.active_phase, origin, direction);
+        let blend = self.blend_factor.clamp(0.0, 1.0);
+        prev * (1.0 - blend) + curr * blend
+    }
 }
 
 fn horizon_component(horizon: Color, zenith: Color, blend: f32, channel: usize) -> f32 {
@@ -164,6 +170,8 @@ pub struct Scene {
     pub camera: Camera,
     pub skybox: Skybox,
     pub day_phase: DayPhase,
+    pub previous_phase: DayPhase,
+    pub day_count: u32,
     pub ambient_intensity: f32,
     pub lantern_emission: f32,
     pub game_state: GameState,
@@ -186,6 +194,8 @@ impl Scene {
             camera,
             skybox,
             day_phase: DayPhase::Day,
+            previous_phase: DayPhase::Day,
+            day_count: 1,
             ambient_intensity: 0.35,
             lantern_emission: 0.0,
             game_state: GameState::default(),
@@ -195,11 +205,16 @@ impl Scene {
             secret_room_objects: Vec::new(),
         };
         scene.set_day_phase(DayPhase::Day);
+        scene.update_transition(1.0);
         scene
     }
 
     pub fn advance_day_phase(&mut self) {
-        self.set_day_phase(self.day_phase.next());
+        let next_phase = self.day_phase.next();
+        if next_phase == DayPhase::Day {
+            self.day_count += 1;
+        }
+        self.set_day_phase(next_phase);
     }
 
     pub fn register_interactive(
@@ -317,15 +332,36 @@ impl Scene {
     }
 
     pub fn set_day_phase(&mut self, phase: DayPhase) {
+        self.previous_phase = self.day_phase;
         self.day_phase = phase;
-        self.skybox.set_phase(phase);
+        self.skybox.previous_phase = self.previous_phase;
+        self.skybox.active_phase = phase;
+        self.refresh_clue_visibility();
+    }
 
-        let (sun_color, sun_intensity, lantern_intensity, ambient, lantern_emission) = match phase {
+    fn phase_parameters(phase: DayPhase) -> (Color, f32, f32, f32, f32) {
+        match phase {
             DayPhase::Day => (Color::new(255, 247, 226), 2.4, 0.0, 0.35, 0.0),
             DayPhase::Sunset => (Color::new(255, 143, 91), 1.65, 0.48, 0.24, 0.65),
             DayPhase::Night => (Color::new(91, 121, 191), 0.38, 1.25, 0.13, 1.0),
             DayPhase::Dawn => (Color::new(255, 185, 140), 1.2, 0.2, 0.2, 0.3),
-        };
+        }
+    }
+
+    pub fn update_transition(&mut self, blend: f32) {
+        self.skybox.blend_factor = blend;
+        
+        let prev = Self::phase_parameters(self.previous_phase);
+        let curr = Self::phase_parameters(self.day_phase);
+
+        let blend = blend.clamp(0.0, 1.0);
+        let sun_color = prev.0 * (1.0 - blend) + curr.0 * blend;
+        
+        let sun_intensity = prev.1 * (1.0 - blend) + curr.1 * blend;
+        let lantern_intensity = prev.2 * (1.0 - blend) + curr.2 * blend;
+        let ambient = prev.3 * (1.0 - blend) + curr.3 * blend;
+        let lantern_emission = prev.4 * (1.0 - blend) + curr.4 * blend;
+
         if let Some(sun) = self.lights.first_mut() {
             sun.color = sun_color;
             sun.intensity = sun_intensity;
@@ -335,7 +371,6 @@ impl Scene {
         }
         self.ambient_intensity = ambient;
         self.lantern_emission = lantern_emission;
-        self.refresh_clue_visibility();
     }
 }
 

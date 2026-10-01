@@ -764,7 +764,8 @@ fn update_window_title(window: &mut Window, scene: &Scene) {
         "Locked"
     };
     window.set_title(&format!(
-        "La Puerta Trasera | {} | Clues: {}/3 | Door: {}",
+        "La Puerta Trasera | Día {} | {} | Clues: {}/3 | Door: {}",
+        scene.day_count,
         phase_name(scene.day_phase),
         scene.game_state.clues_count(),
         door_status,
@@ -784,9 +785,35 @@ fn main() {
     let mut was_mouse_down = false;
     update_window_title(&mut window, &scene);
 
+    let mut last_time = std::time::Instant::now();
+    let mut phase_timer = 0.0_f32;
+    let phase_duration = 75.0_f32; // 5 minutes (300s) / 4 phases = 75s
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        let now = std::time::Instant::now();
+        let delta = now.duration_since(last_time).as_secs_f32();
+        last_time = now;
+
+        phase_timer += delta;
+        if phase_timer >= phase_duration {
+            phase_timer -= phase_duration;
+            scene.advance_day_phase();
+            camera_moved = true;
+            update_window_title(&mut window, &scene);
+        }
+
+        let transition_duration = 5.0_f32; // 5 seconds crossfade
+        let blend = if phase_timer < transition_duration {
+            camera_moved = true;
+            phase_timer / transition_duration
+        } else {
+            1.0
+        };
+        scene.update_transition(blend);
+
         if window.is_key_pressed(Key::Tab, minifb::KeyRepeat::No) {
             scene.advance_day_phase();
+            phase_timer = 0.0; // Reset timer when manually skipping
             camera_moved = true;
             update_window_title(&mut window, &scene);
         }
