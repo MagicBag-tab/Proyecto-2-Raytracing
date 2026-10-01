@@ -29,13 +29,22 @@ impl std::fmt::Debug for Texture {
 
 impl Texture {
     pub fn new(file_path: &str) -> Self {
-        let img = image::open(file_path).expect(&format!("Failed to load texture: {}", file_path));
+        Self::try_new(file_path)
+            .unwrap_or_else(|error| panic!("Failed to load texture {file_path}: {error}"))
+    }
+
+    pub fn try_new(file_path: &str) -> Result<Self, image::ImageError> {
+        let img = image::open(file_path)?;
         let (width, height) = img.dimensions();
-        Texture {
+        Ok(Texture {
             image: img,
             width,
             height,
-        }
+        })
+    }
+
+    pub fn load_or_procedural(file_path: &str, fallback: ProceduralTexture) -> Self {
+        Self::try_new(file_path).unwrap_or_else(|_| Self::procedural(fallback))
     }
 
     pub fn procedural(pattern: ProceduralTexture) -> Self {

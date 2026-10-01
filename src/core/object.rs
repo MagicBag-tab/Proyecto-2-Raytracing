@@ -13,6 +13,7 @@ pub trait Shape: Send + Sync {
 pub struct Object {
     pub shape: Box<dyn Shape>,
     pub material: Material,
+    transform: Transform,
     model_matrix: Mat4,
     inverse_matrix: Mat4,
     normal_matrix: Mat4,
@@ -26,6 +27,7 @@ impl Object {
         Self {
             shape,
             material,
+            transform,
             model_matrix,
             inverse_matrix,
             normal_matrix,
@@ -34,6 +36,14 @@ impl Object {
 }
 
 impl RayIntersect for Object {
+    fn translate_by(&mut self, delta: &Vec3) -> bool {
+        self.transform.position += delta;
+        self.model_matrix = self.transform.matrix();
+        self.inverse_matrix = inverse(&self.model_matrix);
+        self.normal_matrix = transpose(&self.inverse_matrix);
+        true
+    }
+
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<Intersect> {
         let local_origin = vec4_to_vec3(
             &(self.inverse_matrix * vec4(ray_origin.x, ray_origin.y, ray_origin.z, 1.0)),

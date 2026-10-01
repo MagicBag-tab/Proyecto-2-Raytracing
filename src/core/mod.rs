@@ -1,7 +1,9 @@
 pub mod camera;
 pub mod framebuffer;
+pub mod interaction;
 pub mod light;
 pub mod object;
+pub mod picking;
 pub mod ray_intersect;
 pub mod scene;
 pub mod transform;

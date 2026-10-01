@@ -25,14 +25,20 @@ fn wood() -> Material {
     Material::new(Color::new(150, 86, 42))
         .with_albedo(0.82)
         .with_specular(24.0, 0.12)
-        .with_texture(Arc::new(Texture::procedural(ProceduralTexture::Wood)))
+        .with_texture(Arc::new(Texture::load_or_procedural(
+            "assets/textures/wood.png",
+            ProceduralTexture::Wood,
+        )))
 }
 
 fn stone() -> Material {
     Material::new(Color::new(125, 132, 139))
         .with_albedo(0.9)
         .with_specular(18.0, 0.08)
-        .with_texture(Arc::new(Texture::procedural(ProceduralTexture::Stone)))
+        .with_texture(Arc::new(Texture::load_or_procedural(
+            "assets/textures/stone.png",
+            ProceduralTexture::Stone,
+        )))
 }
 
 fn metal() -> Material {
@@ -40,7 +46,10 @@ fn metal() -> Material {
         .with_albedo(0.55)
         .with_specular(96.0, 0.8)
         .with_reflectivity(0.35)
-        .with_texture(Arc::new(Texture::procedural(ProceduralTexture::Metal)))
+        .with_texture(Arc::new(Texture::load_or_procedural(
+            "assets/textures/metal.png",
+            ProceduralTexture::Metal,
+        )))
 }
 
 fn glass() -> Material {
@@ -49,12 +58,18 @@ fn glass() -> Material {
         .with_specular(128.0, 0.9)
         .with_transparency(0.94, 1.5)
         .with_reflectivity(0.04)
-        .with_texture(Arc::new(Texture::procedural(ProceduralTexture::Glass)))
+        .with_texture(Arc::new(Texture::load_or_procedural(
+            "assets/textures/glass.png",
+            ProceduralTexture::Glass,
+        )))
 }
 
 fn paper() -> Material {
     Material::new(Color::new(231, 221, 194))
         .with_albedo(0.96)
         .with_specular(8.0, 0.025)
-        .with_texture(Arc::new(Texture::procedural(ProceduralTexture::Paper)))
+        .with_texture(Arc::new(Texture::load_or_procedural(
+            "assets/textures/paper.png",
+            ProceduralTexture::Paper,
+        )))
 }

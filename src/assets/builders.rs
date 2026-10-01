@@ -12,6 +12,31 @@ use crate::shapes::sphere::Sphere;
 use nalgebra_glm::Vec3;
 use std::sync::Arc;
 
+fn load_optional_map(path: &str) -> Option<Arc<Texture>> {
+    Texture::try_new(path).ok().map(Arc::new)
+}
+
+fn with_optional_maps(mut material: Material, name: &str) -> Material {
+    let normal_path = format!("assets/textures/{name}_normal.png");
+    let specular_path = format!("assets/textures/{name}_specular.png");
+    let overlay_path = format!("assets/textures/{name}_overlay.png");
+    let overlay_normal_path = format!("assets/textures/{name}_overlay_normal.png");
+
+    if let Some(texture) = load_optional_map(&normal_path) {
+        material = material.with_normal_map(texture);
+    }
+    if let Some(texture) = load_optional_map(&specular_path) {
+        material = material.with_specular_map(texture);
+    }
+    if let (Some(overlay), Some(normal)) = (
+        load_optional_map(&overlay_path),
+        load_optional_map(&overlay_normal_path),
+    ) {
+        material = material.with_overlay(overlay, normal);
+    }
+    material
+}
+
 pub struct AssetMaterials {
     pub wood: Material,
     pub stone: Material,
@@ -28,15 +53,21 @@ pub struct AssetMaterials {
 impl AssetMaterials {
     pub fn new() -> Self {
         Self {
-            wood: presets::create(Preset::Wood),
-            stone: presets::create(Preset::Stone),
-            metal: presets::create(Preset::Metal),
-            glass: presets::create(Preset::Glass),
-            paper: presets::create(Preset::Paper),
-            grass: Material::new(Color::new(63, 122, 58))
-                .with_albedo(0.92)
-                .with_specular(10.0, 0.04)
-                .with_texture(Arc::new(Texture::procedural(ProceduralTexture::Grass))),
+            wood: with_optional_maps(presets::create(Preset::Wood), "wood"),
+            stone: with_optional_maps(presets::create(Preset::Stone), "stone"),
+            metal: with_optional_maps(presets::create(Preset::Metal), "metal"),
+            glass: with_optional_maps(presets::create(Preset::Glass), "glass"),
+            paper: with_optional_maps(presets::create(Preset::Paper), "paper"),
+            grass: with_optional_maps(
+                Material::new(Color::new(63, 122, 58))
+                    .with_albedo(0.92)
+                    .with_specular(10.0, 0.04)
+                    .with_texture(Arc::new(Texture::load_or_procedural(
+                        "assets/textures/grass.png",
+                        ProceduralTexture::Grass,
+                    ))),
+                "grass",
+            ),
             terracotta: Material::new(Color::new(157, 61, 47))
                 .with_albedo(0.82)
                 .with_specular(24.0, 0.16),
@@ -257,6 +288,19 @@ pub fn create_chair(position: Vec3, scale: f32, materials: &AssetMaterials) -> V
 }
 
 pub fn create_door(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
+    create_door_with_knob(position, scale, materials, 0.085)
+}
+
+pub fn create_back_door(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
+    create_door_with_knob(position, scale, materials, -0.085)
+}
+
+fn create_door_with_knob(
+    position: Vec3,
+    scale: f32,
+    materials: &AssetMaterials,
+    knob_offset_z: f32,
+) -> Vec<Object> {
     let mut objects = Vec::with_capacity(2);
     append_primitive(
         &mut objects,
@@ -269,7 +313,7 @@ pub fn create_door(position: Vec3, scale: f32, materials: &AssetMaterials) -> Ve
     append_primitive(
         &mut objects,
         Box::new(Sphere),
-        scaled_position(position, Vec3::new(0.27, 0.0, 0.085), scale),
+        scaled_position(position, Vec3::new(0.27, 0.0, knob_offset_z), scale),
         Vec3::zeros(),
         scaled_size(Vec3::new(0.1, 0.1, 0.1), scale),
         &materials.metal,
@@ -278,14 +322,44 @@ pub fn create_door(position: Vec3, scale: f32, materials: &AssetMaterials) -> Ve
 }
 
 pub fn create_house(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
-    let mut objects = Vec::with_capacity(14);
+    let mut objects = Vec::with_capacity(24);
+    for x in [-1.79, 1.79] {
+        append_primitive(
+            &mut objects,
+            Box::new(Cube),
+            scaled_position(position, Vec3::new(x, 0.9, 0.0), scale),
+            Vec3::zeros(),
+            scaled_size(Vec3::new(0.22, 2.8, 2.45), scale),
+            &materials.paper,
+        );
+    }
+    for z in [-1.115, 1.115] {
+        for x in [-1.145, 1.145] {
+            append_primitive(
+                &mut objects,
+                Box::new(Cube),
+                scaled_position(position, Vec3::new(x, 0.9, z), scale),
+                Vec3::zeros(),
+                scaled_size(Vec3::new(1.51, 2.8, 0.22), scale),
+                &materials.paper,
+            );
+        }
+        append_primitive(
+            &mut objects,
+            Box::new(Cube),
+            scaled_position(position, Vec3::new(0.0, 1.9, z), scale),
+            Vec3::zeros(),
+            scaled_size(Vec3::new(0.78, 1.8, 0.22), scale),
+            &materials.paper,
+        );
+    }
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, 0.9, 0.0), scale),
+        scaled_position(position, Vec3::new(0.0, -0.46, 0.0), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(3.8, 2.8, 2.45), scale),
-        &materials.paper,
+        scaled_size(Vec3::new(3.35, 0.08, 2.05), scale),
+        &materials.wood,
     );
     append_primitive(
         &mut objects,

@@ -9,13 +9,15 @@ use std::f32::consts::PI;
 use std::time::Duration;
 
 use crate::assets::{
-    create_chair, create_fence, create_house, create_lantern, create_sakura, create_table,
-    create_tree, AssetMaterials,
+    create_back_door, create_chair, create_fence, create_house, create_lantern, create_sakura,
+    create_table, create_tree, AssetMaterials,
 };
 use crate::core::camera::Camera;
 use crate::core::framebuffer::Framebuffer;
+use crate::core::interaction::{InteractiveKind, ObjectId};
 use crate::core::light::Light;
 use crate::core::object::{Object, Shape};
+use crate::core::picking::pick;
 use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
 use crate::core::scene::{Scene, Skybox};
 use crate::core::transform::Transform;
@@ -54,12 +56,15 @@ pub fn cast_shadow(
     intersect: &Intersect,
     light_direction: &Vec3,
     light: &Light,
-    objects: &[Box<dyn RayIntersect>],
+    scene: &Scene,
 ) -> bool {
     let shadow_ray_origin = intersect.point + intersect.normal * SHADOW_BIAS;
     let light_distance = (light.position - intersect.point).magnitude();
 
-    objects.iter().any(|object| {
+    scene.objects.iter().enumerate().any(|(index, object)| {
+        if !scene.is_object_visible(ObjectId(index)) {
+            return false;
+        }
         object
             .ray_intersect_distance(&shadow_ray_origin, light_direction)
             .is_some_and(|blocker_distance| blocker_distance < light_distance)
@@ -169,7 +174,7 @@ pub fn shade(intersect: &Intersect, ray_origin: &Vec3, scene: &Scene, render_mod
 
     for light in &scene.lights {
         let light_direction = (light.position - intersect.point).normalize();
-        let light_intensity = if cast_shadow(intersect, &light_direction, light, &scene.objects) {
+        let light_intensity = if cast_shadow(intersect, &light_direction, light, scene) {
             0.0
         } else {
             light.intensity
@@ -204,7 +209,10 @@ pub fn cast_ray(
 
     let mut closest: Option<Intersect> = None;
 
-    for object in &scene.objects {
+    for (index, object) in scene.objects.iter().enumerate() {
+        if !scene.is_object_visible(ObjectId(index)) {
+            continue;
+        }
         if let Some(intersect) = object.ray_intersect(ray_origin, ray_direction) {
             if closest
                 .as_ref()
@@ -283,18 +291,7 @@ pub fn cast_ray(
 use rayon::prelude::*;
 
 pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8) {
-    let width_f = framebuffer.width as f32;
-    let height_f = framebuffer.height as f32;
-    let aspect_ratio = width_f / height_f;
-    let perspective_scale = (FOV / 2.0).tan();
     let width = framebuffer.width;
-    let x_scale = 2.0 * aspect_ratio * perspective_scale / width_f;
-    let x_offset = -aspect_ratio * perspective_scale;
-    let y_scale = -2.0 * perspective_scale / height_f;
-    let y_offset = perspective_scale;
-    let camera_forward = (scene.camera.center - scene.camera.eye).normalize();
-    let camera_right = camera_forward.cross(&scene.camera.up).normalize();
-    let camera_up = camera_right.cross(&camera_forward).normalize();
     let camera_eye = scene.camera.eye;
 
     framebuffer
@@ -305,13 +302,13 @@ pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8) {
             let x = i % width;
             let y = i / width;
 
-            let screen_x = x as f32 * x_scale + x_offset;
-            let screen_y = y as f32 * y_scale + y_offset;
-            let camera_direction = Vec3::new(screen_x, screen_y, -1.0);
-            let ray_direction = (camera_direction.x * camera_right
-                + camera_direction.y * camera_up
-                - camera_direction.z * camera_forward)
-                .normalize();
+            let ray_direction = scene.camera.ray_for_pixel(
+                x as f32,
+                y as f32,
+                framebuffer.width,
+                framebuffer.height,
+                FOV,
+            );
 
             let sample_color = cast_ray(&camera_eye, &ray_direction, scene, 0, render_mode);
             let hex = sample_color.to_hex();
@@ -338,12 +335,14 @@ fn add_primitive(
     rotation: Vec3,
     scale: Vec3,
     material: Material,
-) {
+) -> usize {
+    let object_index = objects.len();
     objects.push(Box::new(Object::new(
         shape,
         Transform::new(position, rotation, scale),
         material,
     )));
+    object_index
 }
 
 fn create_scene(camera: Camera) -> Scene {
@@ -562,6 +561,106 @@ fn create_scene(camera: Camera) -> Scene {
         materials.wood.clone(),
     );
 
+    let clue_material = Material::new(Color::new(232, 190, 104))
+        .with_specular(48.0, 0.45)
+        .with_emission(Color::new(255, 177, 74), 0.35);
+    let clue_indices = [
+        add_primitive(
+            &mut objects,
+            Box::new(Sphere),
+            Vec3::new(-4.4, -2.34, 1.55),
+            Vec3::zeros(),
+            Vec3::new(0.28, 0.28, 0.28),
+            clue_material.clone(),
+        ),
+        add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            Vec3::new(1.55, -2.47, -0.45),
+            Vec3::zeros(),
+            Vec3::new(0.34, 0.06, 0.25),
+            materials.paper.clone(),
+        ),
+        add_primitive(
+            &mut objects,
+            Box::new(Sphere),
+            Vec3::new(0.0, -2.35, 2.65),
+            Vec3::zeros(),
+            Vec3::new(0.24, 0.24, 0.24),
+            clue_material,
+        ),
+    ];
+
+    let door_indices = append_asset(
+        &mut objects,
+        create_back_door(Vec3::new(0.0, -2.05, -3.505), 1.0, &materials),
+    );
+    let movable_index = add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(2.35, -2.48, 1.55),
+        Vec3::zeros(),
+        Vec3::new(0.42, 0.42, 0.42),
+        materials.wood.clone(),
+    );
+
+    let mut secret_room_indices = Vec::new();
+    for (position, size, material) in [
+        (
+            Vec3::new(0.0, -2.68, -5.15),
+            Vec3::new(3.8, 0.16, 3.1),
+            materials.stone.clone(),
+        ),
+        (
+            Vec3::new(-1.84, -1.25, -5.15),
+            Vec3::new(0.16, 2.8, 3.1),
+            materials.paper.clone(),
+        ),
+        (
+            Vec3::new(1.84, -1.25, -5.15),
+            Vec3::new(0.16, 2.8, 3.1),
+            materials.paper.clone(),
+        ),
+        (
+            Vec3::new(0.0, -1.25, -6.62),
+            Vec3::new(3.8, 2.8, 0.16),
+            materials.stone.clone(),
+        ),
+    ] {
+        secret_room_indices.push(add_primitive(
+            &mut objects,
+            Box::new(Cube),
+            position,
+            Vec3::zeros(),
+            size,
+            material,
+        ));
+    }
+    secret_room_indices.push(add_primitive(
+        &mut objects,
+        Box::new(Cube),
+        Vec3::new(-0.78, -1.45, -6.48),
+        Vec3::zeros(),
+        Vec3::new(0.72, 1.45, 0.08),
+        materials.metal.clone().with_reflectivity(0.72),
+    ));
+    secret_room_indices.push(add_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        Vec3::new(0.1, -2.31, -5.25),
+        Vec3::zeros(),
+        Vec3::new(0.25, 0.3, 0.25),
+        materials.glass.clone(),
+    ));
+    secret_room_indices.push(add_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        Vec3::new(0.88, -2.22, -5.95),
+        Vec3::zeros(),
+        Vec3::new(0.12, 0.48, 0.12),
+        materials.warm_glow.clone(),
+    ));
+
     let lights = vec![
         Light::new(Vec3::new(-4.0, 7.0, 7.0), Color::new(255, 242, 220), 2.4),
         Light::new(
@@ -574,22 +673,79 @@ fn create_scene(camera: Camera) -> Scene {
             Color::new(255, 190, 104),
             0.85,
         ),
+        Light::new(Vec3::new(0.88, -1.72, -5.8), Color::new(255, 173, 92), 0.65),
     ];
 
-    Scene::new(
-        objects,
-        lights,
-        camera,
-        Skybox::new(Color::from_hex(SKY_COLOR)),
-    )
+    let mut skybox = Skybox::new(Color::from_hex(SKY_COLOR));
+    for (phase, path) in [
+        (
+            crate::core::scene::DayPhase::Day,
+            "assets/textures/sky_day.png",
+        ),
+        (
+            crate::core::scene::DayPhase::Sunset,
+            "assets/textures/sky_sunset.png",
+        ),
+        (
+            crate::core::scene::DayPhase::Night,
+            "assets/textures/sky_night.png",
+        ),
+    ] {
+        if std::path::Path::new(path).is_file() {
+            if let Err(error) = skybox.load_phase_texture(phase, path) {
+                eprintln!("Could not load sky texture {path}: {error}");
+            }
+        }
+    }
+
+    let mut scene = Scene::new(objects, lights, camera, skybox);
+    for (clue_index, object_index) in clue_indices.into_iter().enumerate() {
+        scene.register_interactive(object_index, InteractiveKind::Clue(clue_index), true);
+    }
+    for object_index in door_indices {
+        scene.register_door_part(object_index);
+    }
+    scene.register_interactive(movable_index, InteractiveKind::Movable, true);
+    for object_index in secret_room_indices {
+        scene.register_secret_room_object(object_index);
+    }
+    scene
 }
 
-fn append_asset(objects: &mut Vec<Box<dyn RayIntersect>>, asset: Vec<Object>) {
+fn append_asset(objects: &mut Vec<Box<dyn RayIntersect>>, asset: Vec<Object>) -> Vec<usize> {
+    let start = objects.len();
     objects.extend(
         asset
             .into_iter()
             .map(|object| Box::new(object) as Box<dyn RayIntersect>),
     );
+    (start..objects.len()).collect()
+}
+
+fn phase_name(phase: crate::core::scene::DayPhase) -> &'static str {
+    match phase {
+        crate::core::scene::DayPhase::Day => "DAY",
+        crate::core::scene::DayPhase::Sunset => "SUNSET",
+        crate::core::scene::DayPhase::Night => "NIGHT",
+    }
+}
+
+fn update_window_title(window: &mut Window, scene: &Scene) {
+    let door_status = if scene.game_state.door_unlocked {
+        if scene.game_state.secret_room_open {
+            "Open"
+        } else {
+            "Unlocked"
+        }
+    } else {
+        "Locked"
+    };
+    window.set_title(&format!(
+        "La Puerta Trasera | {} | Clues: {}/3 | Door: {}",
+        phase_name(scene.day_phase),
+        scene.game_state.clues_count(),
+        door_status,
+    ));
 }
 
 fn main() {
@@ -601,17 +757,15 @@ fn main() {
     let mut camera_moved = true;
     let mut render_mode = 0;
     let mut last_mouse_position: Option<(f32, f32)> = None;
+    let mut mouse_press_position: Option<(f32, f32)> = None;
+    let mut was_mouse_down = false;
+    update_window_title(&mut window, &scene);
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         if window.is_key_pressed(Key::Tab, minifb::KeyRepeat::No) {
             scene.advance_day_phase();
             camera_moved = true;
-            let phase_name = match scene.day_phase {
-                crate::core::scene::DayPhase::Day => "DAY",
-                crate::core::scene::DayPhase::Sunset => "SUNSET",
-                crate::core::scene::DayPhase::Night => "NIGHT",
-            };
-            window.set_title(&format!("Lakitu | {phase_name} | Tab: cycle"));
+            update_window_title(&mut window, &scene);
         }
 
         if window.is_key_pressed(Key::Key1, minifb::KeyRepeat::No) {
@@ -640,9 +794,26 @@ fn main() {
             }
         }
 
+        if let Some(selected) = scene.game_state.selected_object {
+            let movement = [
+                (Key::W, Vec3::new(0.0, 0.0, -0.06)),
+                (Key::S, Vec3::new(0.0, 0.0, 0.06)),
+                (Key::A, Vec3::new(-0.06, 0.0, 0.0)),
+                (Key::D, Vec3::new(0.06, 0.0, 0.0)),
+            ];
+            for (key, delta) in movement {
+                if window.is_key_down(key) && scene.move_interactive(selected, delta) {
+                    camera_moved = true;
+                }
+            }
+        }
+
         let mouse_down = window.get_mouse_down(MouseButton::Left);
         let mouse_position = window.get_mouse_pos(MouseMode::Clamp);
         if mouse_down {
+            if !was_mouse_down {
+                mouse_press_position = mouse_position;
+            }
             if let (Some((x, y)), Some((last_x, last_y))) = (mouse_position, last_mouse_position) {
                 let drag_sensitivity = 0.006;
                 let delta_yaw = -(x - last_x) * drag_sensitivity;
@@ -654,8 +825,59 @@ fn main() {
             }
             last_mouse_position = mouse_position;
         } else {
+            if was_mouse_down {
+                let click_position = mouse_position.or(mouse_press_position);
+                if let (Some((press_x, press_y)), Some((x, y))) =
+                    (mouse_press_position, click_position)
+                {
+                    if (x - press_x).powi(2) + (y - press_y).powi(2) <= 25.0 {
+                        if let Some(hit) = pick(&scene, &scene.camera, x, y, WIDTH, HEIGHT, FOV) {
+                            let id = ObjectId(hit.object_index);
+                            scene.game_state.selected_object = Some(id);
+                            match scene.interaction_for(id) {
+                                Some(InteractiveKind::Clue(_)) => {
+                                    if scene.discover_clue(id) {
+                                        println!(
+                                            "Clue found: {}/3",
+                                            scene.game_state.clues_count()
+                                        );
+                                        if scene.game_state.door_unlocked {
+                                            println!("The back door is unlocked.");
+                                        }
+                                        camera_moved = true;
+                                    }
+                                }
+                                Some(InteractiveKind::BackDoor) => {
+                                    if scene.toggle_secret_room() {
+                                        println!(
+                                            "Back door {}.",
+                                            if scene.game_state.secret_room_open {
+                                                "opened"
+                                            } else {
+                                                "closed"
+                                            }
+                                        );
+                                        camera_moved = true;
+                                    } else {
+                                        println!("The back door is locked.");
+                                    }
+                                }
+                                Some(InteractiveKind::Movable) => {
+                                    println!("Movable object selected. Use WASD to move it.");
+                                }
+                                None => println!("Selected object {}.", id.0),
+                            }
+                        } else {
+                            scene.game_state.selected_object = None;
+                        }
+                        update_window_title(&mut window, &scene);
+                    }
+                }
+            }
+            mouse_press_position = None;
             last_mouse_position = None;
         }
+        was_mouse_down = mouse_down;
 
         if let Some((_, scroll_delta)) = window.get_scroll_wheel() {
             if scroll_delta != 0.0 {
