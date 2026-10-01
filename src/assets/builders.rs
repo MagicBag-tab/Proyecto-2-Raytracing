@@ -147,38 +147,104 @@ pub fn build_base_diorama(position: Vec3, scale: f32, materials: &AssetMaterials
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, -0.4, 0.0), scale),
+        scaled_position(position, Vec3::new(0.0, -0.4, -2.5), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(7.0, 0.4, 5.0), scale),
+        scaled_size(Vec3::new(9.0, 0.4, 12.0), scale),
         &materials.dark_wood,
     );
 
-    // Narrow moss strips frame the larger gravel garden and route.
-    for x in [-2.56, 2.56] {
-        append_primitive(
-            &mut objects,
-            Box::new(Cube),
-            scaled_position(position, Vec3::new(x, -0.05, 0.0), scale),
-            Vec3::zeros(),
-            scaled_size(Vec3::new(0.88, 0.3, 4.5), scale),
-            &materials.grass,
-        );
-    }
+    // Inner gravel area
+    let mut gravel = materials.stone.clone();
+    gravel.diffuse = Color::new(190, 190, 185);
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, -0.025, 0.0), scale),
+        scaled_position(position, Vec3::new(0.0, -0.05, -2.5), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(4.18, 0.31, 4.5), scale),
-        &materials.stone,
+        scaled_size(Vec3::new(8.6, 0.3, 11.6), scale),
+        &gravel,
+    );
+
+    // Grass zones
+    // Left Zone
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-2.6, 0.11, -2.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(3.2, 0.02, 11.2), scale),
+        &materials.grass,
+    );
+    // Right Zone
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(3.5, 0.11, -2.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(1.4, 0.02, 11.2), scale),
+        &materials.grass,
+    );
+    // Back Zone
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.6, 0.11, -4.95), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(3.2, 0.02, 6.3), scale),
+        &materials.grass,
+    );
+
+    // Front patches to break up the gravel
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(2.4, 0.11, 2.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(1.6, 0.02, 1.4), scale),
+        &materials.grass,
     );
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, -0.025, 1.48), scale),
+        scaled_position(position, Vec3::new(-0.8, 0.11, 0.8), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(0.72, 0.34, 2.0), scale),
-        &materials.light_wood,
+        scaled_size(Vec3::new(1.0, 0.02, 1.2), scale),
+        &materials.grass,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(1.0, 0.11, 2.8), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(1.2, 0.02, 0.8), scale),
+        &materials.grass,
+    );
+
+    // Add tatami floor inside the cafe space
+    let mut tatami = materials.grass.clone();
+    tatami.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
+        "assets/suelo/textura_piso_tatami_japones.png",
+        ProceduralTexture::Wood,
+    )));
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.5, 0.11, -1.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(2.8, 0.03, 1.7), scale),
+        &tatami,
+    );
+
+    // Stone garden base
+    let mut stone_base = materials.stone.clone();
+    stone_base.diffuse = Color::new(165, 165, 170);
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-1.2, 0.105, 2.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(1.6, 0.02, 1.2), scale),
+        &stone_base,
     );
 
     objects
@@ -476,6 +542,21 @@ pub fn build_japanese_cafe(position: Vec3, scale: f32, materials: &AssetMaterial
             Vec3::new(0.0, 0.0, if x < 0.0 { -0.08 } else { 0.08 }),
             scaled_size(Vec3::new(0.10, 0.13, 1.92), scale),
             &materials.dark_wood,
+        );
+    }
+
+    // Noren (Entrance curtain) added for identity
+    let mut noren_mat = materials.paper.clone();
+    noren_mat.diffuse = Color::new(50, 70, 140); // Indigo blue Noren
+    for i in 0..3 {
+        let nx = -0.3 + (i as f32 * 0.3);
+        append_primitive(
+            &mut objects,
+            Box::new(Cube),
+            scaled_position(position, Vec3::new(nx, 1.25, 0.86), scale),
+            Vec3::zeros(),
+            scaled_size(Vec3::new(0.28, 0.6, 0.02), scale),
+            &noren_mat,
         );
     }
 
@@ -850,27 +931,27 @@ pub fn build_rock_garden(position: Vec3, scale: f32, materials: &AssetMaterials)
 
 pub fn build_path(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
     let mut objects = Vec::new();
+    let mut path_mat = materials.stone.clone();
+    path_mat.diffuse = Color::new(110, 115, 110); // Contrasting darker stepping stones
 
-    let stones = [
-        (Vec3::new(0.00, 0.12, 0.78), 0.02),
-        (Vec3::new(-0.04, 0.12, 1.09), -0.04),
-        (Vec3::new(0.03, 0.12, 1.40), 0.035),
-        (Vec3::new(0.00, 0.12, 1.71), -0.025),
-        (Vec3::new(0.04, 0.12, 2.02), 0.015),
-        (Vec3::new(-0.02, 0.12, 2.33), -0.035),
-    ];
+    // Continuous winding path of stepping stones
+    let steps = 11;
+    for i in 0..=steps {
+        let t = i as f32 / steps as f32; // 0 to 1
+        let z = 3.2 - 2.8 * t; // Starts at 3.2, ends at 0.4
+        let x = 0.0 * (1.0 - t) + 0.4 * t + 0.15 * f32::sin(t * std::f32::consts::PI);
 
-    for (offset, rotation) in stones {
+        let rot_y = (i as f32 * 2.4).sin() * 0.15; // Slight orientation variation
+
         append_primitive(
             &mut objects,
             Box::new(Cube),
-            scaled_position(position, offset, scale),
-            Vec3::new(0.0, rotation, 0.0),
-            scaled_size(Vec3::new(0.54, 0.09, 0.28), scale),
-            &materials.stone,
+            scaled_position(position, Vec3::new(x, 0.105, z), scale),
+            Vec3::new(0.0, rot_y, 0.0),
+            scaled_size(Vec3::new(0.45, 0.02, 0.28), scale),
+            &path_mat,
         );
     }
-
     objects
 }
 
@@ -962,5 +1043,157 @@ pub fn build_secret_room_interior(
         &materials.warm_glow,
     );
 
+    objects
+}
+
+pub fn build_back_door(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
+    let mut objects = Vec::new();
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 0.5, -1.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.6, 1.2, 0.05), scale),
+        &materials.dark_wood,
+    );
+    objects
+}
+
+pub fn build_day2_flowers(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
+    let mut objects = Vec::new();
+    let mut asagao = materials.paper.clone();
+    asagao.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
+        "assets/objetos_textura/flores_jardín/asagao.png",
+        ProceduralTexture::Paper,
+    )));
+    let mut ayame = materials.paper.clone();
+    ayame.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
+        "assets/objetos_textura/flores_jardín/ayame.png",
+        ProceduralTexture::Paper,
+    )));
+
+    // Front left garden flower
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-1.8, 0.15, 1.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.4, 0.4, 0.02), scale),
+        &asagao,
+    );
+    // Right side garden flower
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(3.0, 0.15, 1.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.4, 0.4, 0.02), scale),
+        &ayame,
+    );
+
+    objects
+}
+
+pub fn build_day3_decorations(
+    position: Vec3,
+    scale: f32,
+    materials: &AssetMaterials,
+) -> Vec<Object> {
+    let mut objects = Vec::new();
+    let mut ceramica = materials.stone.clone();
+    ceramica.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
+        "assets/objetos_textura/cerámica_1.png",
+        ProceduralTexture::Paper,
+    )));
+    let mut maceta = materials.stone.clone();
+    maceta.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
+        "assets/objetos_textura/maceta.png",
+        ProceduralTexture::Paper,
+    )));
+
+    // Cups on the cafe bench
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(0.8, 0.5, 1.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.04, 0.08, 0.04), scale),
+        &ceramica,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(1.1, 0.5, 1.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.05, 0.06, 0.05), scale),
+        &ceramica,
+    );
+
+    // Pot near the back side
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-0.8, 0.15, -1.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.2, 0.2, 0.2), scale),
+        &maceta,
+    );
+
+    objects
+}
+
+pub fn build_day5_higanbana(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
+    let mut objects = Vec::new();
+    let mut higanbana = materials.paper.clone();
+    higanbana.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
+        "assets/objetos_textura/flores_jardín/higanbana.png",
+        ProceduralTexture::Paper,
+    )));
+
+    // Special flower near the back door
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 0.25, -1.8), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.5, 0.5, 0.02), scale),
+        &higanbana,
+    );
+
+    objects
+}
+
+pub fn build_day6_clue(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
+    let mut objects = Vec::new();
+    let mut mat = materials.paper.clone();
+    mat.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
+        "assets/objetos_textura/flores_jardín/cuadro_1.png",
+        ProceduralTexture::Paper,
+    )));
+    // Plaque near the right lantern
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(1.8, 0.4, -0.6), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.3, 0.3, 0.02), scale),
+        &mat,
+    );
+    objects
+}
+
+pub fn build_day7_clue(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
+    let mut objects = Vec::new();
+    let mut mat = materials.paper.clone();
+    mat.diffuse = Color::new(220, 210, 180);
+    // Scroll on the cafe patio
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(-0.2, 0.2, 0.2), scale),
+        Vec3::new(0.0, 0.0, 1.57),
+        scaled_size(Vec3::new(0.04, 0.3, 0.04), scale),
+        &mat,
+    );
     objects
 }

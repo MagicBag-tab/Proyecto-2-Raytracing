@@ -1,7 +1,18 @@
+use crate::core::interaction::ObjectId;
 pub mod assets;
 mod core;
 mod materials;
 mod shapes;
+
+use crate::assets::build_back_door;
+use crate::assets::{
+    build_day2_flowers, build_day3_decorations, build_day5_higanbana, build_day6_clue,
+    build_day7_clue,
+};
+use crate::core::interaction::InteractiveKind;
+use crate::core::picking::pick;
+
+use crate::core::scene::DayPhase;
 
 use minifb::{Key, MouseButton, MouseMode, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
@@ -15,7 +26,6 @@ use crate::assets::{
 };
 use crate::core::camera::Camera;
 use crate::core::framebuffer::Framebuffer;
-use crate::core::interaction::ObjectId;
 use crate::core::light::Light;
 use crate::core::object::{Object, Shape};
 use crate::core::ray_intersect::{Intersect, Material, RayIntersect};
@@ -341,77 +351,198 @@ fn create_scene(camera: Camera) -> Scene {
         &mut objects,
         build_base_diorama(Vec3::zeros(), 1.0, &materials),
     );
-    append_asset(&mut objects, build_path(Vec3::zeros(), 1.0, &materials));
+    // append_asset(&mut objects, build_path(Vec3::zeros(), 1.0, &materials));
+
+    // ================= CAFÉ =================
+    let cafe_pos = Vec3::new(0.5, 0.0, -1.0);
+    append_asset(&mut objects, build_japanese_cafe(cafe_pos, 1.0, &materials));
     append_asset(
         &mut objects,
-        build_rock_garden(Vec3::new(-2.35, 0.1, 1.35), 1.0, &materials),
-    );
-    append_asset(
-        &mut objects,
-        build_sakura_tree_variant(Vec3::new(-2.65, 0.1, -0.5), 1.05, &materials, 0),
-    );
-    append_asset(
-        &mut objects,
-        build_sakura_tree_variant(Vec3::new(2.45, 0.1, 0.45), 0.68, &materials, 1),
-    );
-    append_asset(
-        &mut objects,
-        build_bamboo_cluster(Vec3::new(2.35, 0.1, -1.55), 1.05, &materials),
-    );
-    append_asset(
-        &mut objects,
-        build_toro_lantern(Vec3::new(2.85, 0.1, 1.72), 0.62, &materials),
-    );
-    append_asset(
-        &mut objects,
-        build_japanese_cafe(Vec3::new(-0.2, 0.15, -0.6), 1.0, &materials),
-    );
-    append_asset(
-        &mut objects,
-        build_cafe_patio(Vec3::new(-1.8, 0.1, 0.35), 0.95, &materials),
+        build_cafe_patio(Vec3::new(2.7, 0.0, 0.0), 1.0, &materials),
     );
 
-    let lights = vec![Light {
-        position: Vec3::new(0.0, 10.0, 10.0),
-        color: Color::new(255, 247, 226),
-        intensity: 2.4,
-    }];
+    // Back Door framed, but NOT completely hidden
+    let door_ids = append_asset(&mut objects, build_back_door(cafe_pos, 1.0, &materials));
 
-    let mut skybox = Skybox::new(Color::new(230, 242, 255));
-    for (phase, name) in [
-        (crate::core::scene::DayPhase::Day, "sky_day.png"),
-        (crate::core::scene::DayPhase::Sunset, "sky_sunset.png"),
-        (crate::core::scene::DayPhase::Night, "sky_night.png"),
-        (crate::core::scene::DayPhase::Dawn, "sky_dawn.png"),
-    ] {
-        let paths = [
-            format!(
-                "assets/sky_{}/0.png",
-                name.replace("sky_", "").replace(".png", "")
-            ),
-            format!(
-                "assets/sky_{}/1.png",
-                name.replace("sky_", "").replace(".png", "")
-            ),
-            format!(
-                "assets/sky_{}/2.png",
-                name.replace("sky_", "").replace(".png", "")
-            ),
-            format!(
-                "assets/sky_{}/3.png",
-                name.replace("sky_", "").replace(".png", "")
-            ),
-        ];
-        let p_refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
-        let _ = skybox.load_phase_layers(phase, &p_refs);
+    // ================= VEGETATION & GARDEN =================
+    // Rock Garden
+    append_asset(
+        &mut objects,
+        build_rock_garden(Vec3::new(-1.2, 0.1, 2.0), 1.2, &materials),
+    );
+
+    // Sakuras (Groups)
+    append_asset(
+        &mut objects,
+        build_sakura_tree_variant(Vec3::new(-2.8, 0.1, -1.5), 1.3, &materials, 0),
+    );
+    append_asset(
+        &mut objects,
+        build_sakura_tree_variant(Vec3::new(3.5, 0.1, -1.2), 0.9, &materials, 1),
+    );
+
+    // Bamboo Groups
+    append_asset(
+        &mut objects,
+        build_bamboo_cluster(Vec3::new(-3.2, 0.1, 2.0), 1.1, &materials),
+    ); // Front Left
+    append_asset(
+        &mut objects,
+        build_bamboo_cluster(Vec3::new(-3.5, 0.1, -2.5), 1.0, &materials),
+    ); // Back Left
+    append_asset(
+        &mut objects,
+        build_bamboo_cluster(Vec3::new(3.8, 0.1, 2.0), 0.9, &materials),
+    ); // Front Right
+    append_asset(
+        &mut objects,
+        build_bamboo_cluster(Vec3::new(2.5, 0.1, -2.8), 1.0, &materials),
+    ); // Back Right
+
+    // ================= LANTERNS & DETAILS =================
+    let mut toro_materials = materials.stone.clone();
+    toro_materials.emission = Color::new(0, 0, 0);
+
+    append_asset(
+        &mut objects,
+        build_toro_lantern(Vec3::new(-1.8, 0.1, 1.0), 0.7, &materials),
+    );
+    append_asset(
+        &mut objects,
+        build_toro_lantern(Vec3::new(3.2, 0.1, 0.5), 0.6, &materials),
+    );
+
+    // Small stones / bushes on the grass
+    append_asset(
+        &mut objects,
+        build_rock_garden(Vec3::new(-3.0, 0.1, 1.0), 0.6, &materials),
+    );
+    append_asset(
+        &mut objects,
+        build_rock_garden(Vec3::new(3.5, 0.1, -0.5), 0.5, &materials),
+    );
+
+    // Small bushes simulating flowers (scaled down sakura)
+    append_asset(
+        &mut objects,
+        build_sakura_tree_variant(Vec3::new(-1.8, 0.1, 2.5), 0.35, &materials, 2),
+    );
+    append_asset(
+        &mut objects,
+        build_sakura_tree_variant(Vec3::new(2.8, 0.1, 1.5), 0.4, &materials, 0),
+    );
+    append_asset(
+        &mut objects,
+        build_sakura_tree_variant(Vec3::new(-0.8, 0.1, -2.6), 0.35, &materials, 1),
+    );
+
+    // ================= LIGHTS =================
+    let mut lights = Vec::new();
+    lights.push(Light {
+        position: Vec3::new(-10.0, 15.0, 10.0),
+        color: Color::new(255, 240, 220),
+        intensity: 1.2,
+    });
+
+    // Load Skyboxes
+    let mut skybox = Skybox::new(Color::new(135, 206, 235));
+    let _ = skybox.load_phase_layers(
+        DayPhase::Dawn,
+        &[
+            "assets/sky_dawn/1.png",
+            "assets/sky_dawn/2.png",
+            "assets/sky_dawn/3.png",
+            "assets/sky_dawn/4.png",
+        ],
+    );
+    let _ = skybox.load_phase_layers(
+        DayPhase::Day,
+        &[
+            "assets/sky_day/1.png",
+            "assets/sky_day/2.png",
+            "assets/sky_day/3.png",
+            "assets/sky_day/4.png",
+        ],
+    );
+    let _ = skybox.load_phase_layers(
+        DayPhase::Sunset,
+        &[
+            "assets/sky_sunset/1.png",
+            "assets/sky_sunset/2.png",
+            "assets/sky_sunset/3.png",
+            "assets/sky_sunset/4.png",
+        ],
+    );
+    let _ = skybox.load_phase_layers(
+        DayPhase::Night,
+        &[
+            "assets/sky_night/1.png",
+            "assets/sky_night/2.png",
+            "assets/sky_night/3.png",
+            "assets/sky_night/4.png",
+        ],
+    );
+
+    let mut scene = Scene::new(objects, lights, camera, skybox);
+
+    // Register objects for days
+    let day2_ids = append_asset(
+        &mut scene.objects,
+        build_day2_flowers(Vec3::zeros(), 1.0, &materials),
+    );
+    for id in day2_ids {
+        scene.appears_on_day.insert(ObjectId(id), 2);
     }
 
-    Scene::new(objects, lights, camera, skybox)
+    let day3_ids = append_asset(
+        &mut scene.objects,
+        build_day3_decorations(Vec3::zeros(), 1.0, &materials),
+    );
+    for id in day3_ids {
+        scene.appears_on_day.insert(ObjectId(id), 3);
+    }
+
+    let day5_ids = append_asset(
+        &mut scene.objects,
+        build_day5_higanbana(Vec3::zeros(), 1.0, &materials),
+    );
+    for id in day5_ids {
+        scene.appears_on_day.insert(ObjectId(id), 5);
+        scene.register_interactive(id, InteractiveKind::Clue(0), false);
+    }
+
+    let day6_ids = append_asset(
+        &mut scene.objects,
+        build_day6_clue(Vec3::zeros(), 1.0, &materials),
+    );
+    for id in day6_ids {
+        scene.appears_on_day.insert(ObjectId(id), 6);
+        scene.register_interactive(id, InteractiveKind::Clue(1), false);
+    }
+
+    let day7_ids = append_asset(
+        &mut scene.objects,
+        build_day7_clue(Vec3::zeros(), 1.0, &materials),
+    );
+    for id in day7_ids {
+        scene.appears_on_day.insert(ObjectId(id), 7);
+        scene.register_interactive(id, InteractiveKind::Clue(2), false);
+    }
+
+    for id in door_ids {
+        scene.register_interactive(id, InteractiveKind::BackDoor, true);
+    }
+
+    scene.day_count = 1;
+    scene.set_day_phase(DayPhase::Day);
+    scene.refresh_visibility();
+
+    scene
 }
 
 fn create_camera() -> Camera {
     Camera::new(
-        Vec3::new(2.9, 5.1, 7.5),
+        Vec3::new(4.5, 8.0, 11.5),
         Vec3::new(0.0, 0.35, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
     )
@@ -576,7 +707,17 @@ fn main() {
     let test_mode = std::env::args().nth(1);
     if matches!(
         test_mode.as_deref(),
-        Some("--render-day1-flat" | "--render-day1-textured" | "--render-day1-rear")
+        Some(
+            "--render-day1-flat"
+                | "--render-day1-textured"
+                | "--render-day1-rear"
+                | "--render-day2"
+                | "--render-day3"
+                | "--render-day4"
+                | "--render-day5"
+                | "--render-day6"
+                | "--render-day7"
+        )
     ) {
         let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
         let rear_view = test_mode.as_deref() == Some("--render-day1-rear");
@@ -644,18 +785,88 @@ fn main() {
     let mut render_mode = 0;
     let mut last_mouse_position: Option<(f32, f32)> = None;
 
+    let mut was_mouse_down = false;
+
+    // Helper for title updates
+    let get_title = |scene: &Scene| -> String {
+        let day = scene.day_count;
+        let phase = match scene.day_phase {
+            DayPhase::Dawn => "Amanecer",
+            DayPhase::Day => "Día",
+            DayPhase::Sunset => "Atardecer",
+            DayPhase::Night => "Noche",
+        };
+        let clues = scene.game_state.clues_count();
+        let clue_str = if clues > 0 {
+            format!(" | PISTAS {}/3", clues)
+        } else {
+            String::new()
+        };
+        format!("La Puerta Trasera — DÍA {} ({}){}", day, phase, clue_str)
+    };
+
+    window.set_title(&get_title(&scene));
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        if window.is_key_pressed(Key::Key1, minifb::KeyRepeat::No) {
+        // Temporary render mode bindings
+        if window.is_key_pressed(Key::Key8, minifb::KeyRepeat::No) {
             render_mode = 0;
             camera_moved = true;
         }
-        if window.is_key_pressed(Key::Key2, minifb::KeyRepeat::No) {
+        if window.is_key_pressed(Key::Key9, minifb::KeyRepeat::No) {
             render_mode = 1;
             camera_moved = true;
         }
-        if window.is_key_pressed(Key::Key3, minifb::KeyRepeat::No) {
+        if window.is_key_pressed(Key::Key0, minifb::KeyRepeat::No) {
             render_mode = 2;
             camera_moved = true;
+        }
+
+        // Time of Day
+        if window.is_key_pressed(Key::F1, minifb::KeyRepeat::No) {
+            scene.set_day_phase(DayPhase::Dawn);
+            scene.update_transition(1.0);
+            camera_moved = true;
+            window.set_title(&get_title(&scene));
+        }
+        if window.is_key_pressed(Key::F2, minifb::KeyRepeat::No) {
+            scene.set_day_phase(DayPhase::Day);
+            scene.update_transition(1.0);
+            camera_moved = true;
+            window.set_title(&get_title(&scene));
+        }
+        if window.is_key_pressed(Key::F3, minifb::KeyRepeat::No) {
+            scene.set_day_phase(DayPhase::Sunset);
+            scene.update_transition(1.0);
+            camera_moved = true;
+            window.set_title(&get_title(&scene));
+        }
+        if window.is_key_pressed(Key::F4, minifb::KeyRepeat::No) {
+            scene.set_day_phase(DayPhase::Night);
+            scene.update_transition(1.0);
+            camera_moved = true;
+            window.set_title(&get_title(&scene));
+        }
+
+        // Day Progression
+        for (i, key) in [
+            Key::F5,
+            Key::F6,
+            Key::F7,
+            Key::F8,
+            Key::F9,
+            Key::F10,
+            Key::F11,
+        ]
+        .iter()
+        .enumerate()
+        {
+            if window.is_key_pressed(*key, minifb::KeyRepeat::No) {
+                scene.day_count = (i + 1) as u32;
+                scene.refresh_visibility();
+                camera_moved = true;
+                window.set_title(&format!("La Puerta Trasera — Día {}", scene.day_count));
+            }
         }
 
         let orbit = [
@@ -673,6 +884,48 @@ fn main() {
 
         let mouse_down = window.get_mouse_down(MouseButton::Left);
         let mouse_position = window.get_mouse_pos(MouseMode::Pass);
+
+        if mouse_down && !was_mouse_down {
+            if let Some((x, y)) = mouse_position {
+                if let Some(hit) = pick(
+                    &scene,
+                    &scene.camera,
+                    x,
+                    y,
+                    framebuffer.width,
+                    framebuffer.height,
+                    FOV,
+                ) {
+                    let id = ObjectId(hit.object_index);
+                    if let Some(kind) = scene.interaction_for(id) {
+                        match kind {
+                            InteractiveKind::Clue(i) => {
+                                if scene.game_state.found_clue(i) {
+                                    scene.refresh_visibility();
+                                    camera_moved = true;
+                                    window.set_title(&get_title(&scene));
+                                    println!("Pista {} encontrada!", i + 1);
+                                }
+                            }
+                            InteractiveKind::BackDoor => {
+                                if scene.game_state.door_unlocked
+                                    && !scene.game_state.secret_room_open
+                                {
+                                    scene.game_state.secret_room_open = true;
+                                    let delta = Vec3::new(-0.8, 0.0, 0.0);
+                                    scene.objects[hit.object_index].translate_by(&delta);
+                                    camera_moved = true;
+                                    println!("¡La puerta trasera se ha abierto!");
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        was_mouse_down = mouse_down;
+
         if mouse_down {
             if let (Some((x, y)), Some((last_x, last_y))) = (mouse_position, last_mouse_position) {
                 let drag_sensitivity = 0.006;
