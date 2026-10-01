@@ -13,6 +13,7 @@ pub enum DayPhase {
     Day,
     Sunset,
     Night,
+    Dawn,
 }
 
 impl DayPhase {
@@ -20,7 +21,8 @@ impl DayPhase {
         match self {
             Self::Day => Self::Sunset,
             Self::Sunset => Self::Night,
-            Self::Night => Self::Day,
+            Self::Night => Self::Dawn,
+            Self::Dawn => Self::Day,
         }
     }
 
@@ -29,6 +31,7 @@ impl DayPhase {
             Self::Day => 0,
             Self::Sunset => 1,
             Self::Night => 2,
+            Self::Dawn => 3,
         }
     }
 }
@@ -37,7 +40,7 @@ pub struct Skybox {
     pub color: Color,
     horizon: Color,
     zenith: Color,
-    phase_textures: [Option<Texture>; 3],
+    phase_layers: [Vec<Texture>; 4],
     active_phase: DayPhase,
 }
 
@@ -47,18 +50,22 @@ impl Skybox {
             color,
             horizon: Color::new(34, 48, 64),
             zenith: Color::new(106, 145, 181),
-            phase_textures: [None, None, None],
+            phase_layers: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             active_phase: DayPhase::Day,
         }
     }
 
-    pub fn load_phase_texture(
+    pub fn load_phase_layers(
         &mut self,
         phase: DayPhase,
-        path: &str,
+        paths: &[&str],
     ) -> Result<(), image::ImageError> {
-        let texture = Texture::try_new(path)?;
-        self.phase_textures[phase.index()] = Some(texture);
+        let mut layers = Vec::new();
+        for path in paths {
+            let texture = Texture::try_new(path)?;
+            layers.push(texture);
+        }
+        self.phase_layers[phase.index()] = layers;
         Ok(())
     }
 
@@ -80,26 +87,65 @@ impl Skybox {
                 Color::new(5, 10, 31),
                 Color::new(51, 67, 104),
             ),
+            DayPhase::Dawn => (
+                Color::new(192, 145, 145),
+                Color::new(106, 115, 181),
+                Color::new(245, 230, 240),
+            ),
         };
         self.horizon = horizon;
         self.zenith = zenith;
         self.color = tint;
     }
 
-    pub fn sample(&self, direction: &Vec3) -> Color {
-        if let Some(texture) = &self.phase_textures[self.active_phase.index()] {
-            let u = 0.5 + direction.z.atan2(direction.x) / (2.0 * PI);
-            let v = 0.5 - direction.y.clamp(-1.0, 1.0).asin() / PI;
-            return texture.get_color(u, v);
-        }
+    pub fn sample(&self, origin: &Vec3, direction: &Vec3) -> Color {
         let blend = ((direction.y + 0.15) / 0.85).clamp(0.0, 1.0);
-        let base = Color::new(
+        let mut current_color = Color::new(
             horizon_component(self.horizon, self.zenith, blend, 0) as u8,
             horizon_component(self.horizon, self.zenith, blend, 1) as u8,
             horizon_component(self.horizon, self.zenith, blend, 2) as u8,
         );
         let tint = self.color;
-        base * 0.82 + tint * 0.18
+        current_color = current_color * 0.82 + tint * 0.18;
+
+        let layers = &self.phase_layers[self.active_phase.index()];
+        if layers.is_empty() {
+            return current_color;
+        }
+
+        let radii = [80.0, 70.0, 60.0, 50.0];
+
+        for (i, texture) in layers.iter().enumerate() {
+            let radius = *radii.get(i).unwrap_or(&50.0);
+            
+            let ox = origin.x;
+            let oz = origin.z;
+            let dx = direction.x;
+            let dz = direction.z;
+
+            let a = dx * dx + dz * dz;
+            if a < 1e-6 { continue; }
+            
+            let b = 2.0 * (ox * dx + oz * dz);
+            let c = ox * ox + oz * oz - radius * radius;
+            
+            let discriminant = b * b - 4.0 * a * c;
+            if discriminant > 0.0 {
+                let t = (-b + discriminant.sqrt()) / (2.0 * a);
+                if t > 0.0 {
+                    let p = origin + direction * t;
+                    let u = 0.5 + p.z.atan2(p.x) / (2.0 * PI);
+                    let v = 0.5 - direction.y.clamp(-1.0, 1.0).asin() / PI;
+                    
+                    let tex_color = texture.get_color(u, v);
+                    let tex_alpha = texture.get_alpha(u, v);
+                    
+                    current_color = current_color * (1.0 - tex_alpha) + tex_color * tex_alpha;
+                }
+            }
+        }
+
+        current_color
     }
 }
 
@@ -278,6 +324,7 @@ impl Scene {
             DayPhase::Day => (Color::new(255, 247, 226), 2.4, 0.0, 0.35, 0.0),
             DayPhase::Sunset => (Color::new(255, 143, 91), 1.65, 0.48, 0.24, 0.65),
             DayPhase::Night => (Color::new(91, 121, 191), 0.38, 1.25, 0.13, 1.0),
+            DayPhase::Dawn => (Color::new(255, 185, 140), 1.2, 0.2, 0.2, 0.3),
         };
         if let Some(sun) = self.lights.first_mut() {
             sun.color = sun_color;

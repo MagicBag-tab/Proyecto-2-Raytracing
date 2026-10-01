@@ -204,7 +204,7 @@ pub fn cast_ray(
     render_mode: u8,
 ) -> Color {
     if depth > MAX_DEPTH {
-        return scene.skybox.sample(ray_direction);
+        return scene.skybox.sample(ray_origin, ray_direction);
     }
 
     let mut closest: Option<Intersect> = None;
@@ -224,7 +224,7 @@ pub fn cast_ray(
     }
 
     let Some(intersect) = closest else {
-        return scene.skybox.sample(ray_direction);
+        return scene.skybox.sample(ray_origin, ray_direction);
     };
 
     let color = shade(&intersect, ray_origin, scene, render_mode);
@@ -677,24 +677,46 @@ fn create_scene(camera: Camera) -> Scene {
     ];
 
     let mut skybox = Skybox::new(Color::from_hex(SKY_COLOR));
-    for (phase, path) in [
+    for (phase, paths) in [
         (
             crate::core::scene::DayPhase::Day,
-            "assets/textures/sky_day.png",
+            vec![
+                "assets/sky_day/1.png",
+                "assets/sky_day/2.png",
+                "assets/sky_day/3.png",
+                "assets/sky_day/4.png",
+            ],
         ),
         (
             crate::core::scene::DayPhase::Sunset,
-            "assets/textures/sky_sunset.png",
+            vec![
+                "assets/sky_sunset/1.png",
+                "assets/sky_sunset/2.png",
+                "assets/sky_sunset/3.png",
+                "assets/sky_sunset/4.png",
+            ],
         ),
         (
             crate::core::scene::DayPhase::Night,
-            "assets/textures/sky_night.png",
+            vec![
+                "assets/sky_night/1.png",
+                "assets/sky_night/2.png",
+                "assets/sky_night/3.png",
+                "assets/sky_night/4.png",
+            ],
+        ),
+        (
+            crate::core::scene::DayPhase::Dawn,
+            vec![
+                "assets/sky_dawn/1.png",
+                "assets/sky_dawn/2.png",
+                "assets/sky_dawn/3.png",
+                "assets/sky_dawn/4.png",
+            ],
         ),
     ] {
-        if std::path::Path::new(path).is_file() {
-            if let Err(error) = skybox.load_phase_texture(phase, path) {
-                eprintln!("Could not load sky texture {path}: {error}");
-            }
+        if let Err(error) = skybox.load_phase_layers(phase, &paths) {
+            eprintln!("Could not load sky layers for {:?}: {}", phase, error);
         }
     }
 
@@ -727,6 +749,7 @@ fn phase_name(phase: crate::core::scene::DayPhase) -> &'static str {
         crate::core::scene::DayPhase::Day => "DAY",
         crate::core::scene::DayPhase::Sunset => "SUNSET",
         crate::core::scene::DayPhase::Night => "NIGHT",
+        crate::core::scene::DayPhase::Dawn => "DAWN",
     }
 }
 
