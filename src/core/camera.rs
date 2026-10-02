@@ -5,6 +5,7 @@ const PITCH_LIMIT: f32 = PI / 2.0 - 0.1;
 const MIN_ORBIT_RADIUS: f32 = 4.5;
 const MAX_ORBIT_RADIUS: f32 = 32.0;
 
+#[derive(Clone)]
 pub struct Camera {
     pub eye: Vec3,
     pub center: Vec3,

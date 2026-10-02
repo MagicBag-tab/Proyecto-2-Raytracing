@@ -39,6 +39,19 @@ use crate::shapes::cube::Cube;
 use crate::shapes::plane::Plane;
 use crate::shapes::sphere::Sphere;
 
+#[derive(PartialEq, Clone)]
+pub enum AppMode {
+    MainMenu,
+    Exploration,
+    Cinematic,
+}
+
+#[derive(Clone)]
+pub struct CinematicState {
+    pub start_time: Instant,
+    pub original_camera: Camera,
+}
+
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
 const FOV: f32 = PI / 3.0;
@@ -331,34 +344,44 @@ fn environment_color(scene: &Scene, ray_origin: &Vec3, ray_direction: &Vec3) -> 
 
 use rayon::prelude::*;
 
-pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8) {
+pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8, scale_factor: u32) {
     let width = framebuffer.width;
+    let height = framebuffer.height;
     let camera_eye = scene.camera.eye;
 
-    framebuffer
-        .buffer
-        .par_iter_mut()
-        .enumerate()
-        .for_each(|(i, pixel)| {
-            let x = i % width;
-            let y = i / width;
-
-            let ray_direction = scene.camera.ray_for_pixel(
-                x as f32,
-                y as f32,
-                framebuffer.width,
-                framebuffer.height,
-                FOV,
-            );
-
-            let sample_color = cast_ray(&camera_eye, &ray_direction, scene, 0, render_mode);
-            let hex = sample_color.to_hex();
-
-            let r = (hex >> 16) & 0xFF;
-            let g = (hex >> 8) & 0xFF;
-            let b = hex & 0xFF;
-            *pixel = r << 16 | g << 8 | b;
+    if scale_factor <= 1 {
+        framebuffer
+            .buffer
+            .par_chunks_mut(width)
+            .enumerate()
+            .for_each(|(y, row)| {
+                for (x, pixel) in row.iter_mut().enumerate() {
+                    let ray_direction = scene.camera.ray_for_pixel(x as f32, y as f32, width, height, FOV);
+                    *pixel = cast_ray(&camera_eye, &ray_direction, scene, 0, render_mode).to_hex();
+                }
+            });
+    } else {
+        let scaled_width = width / scale_factor as usize;
+        let scaled_height = height / scale_factor as usize;
+        let mut scaled_buffer = vec![0; scaled_width * scaled_height];
+        
+        scaled_buffer.par_chunks_mut(scaled_width).enumerate().for_each(|(sy, row)| {
+            for (sx, pixel) in row.iter_mut().enumerate() {
+                let x = sx * scale_factor as usize;
+                let y = sy * scale_factor as usize;
+                let ray_direction = scene.camera.ray_for_pixel(x as f32, y as f32, width, height, FOV);
+                *pixel = cast_ray(&camera_eye, &ray_direction, scene, 0, render_mode).to_hex();
+            }
         });
+
+        framebuffer.buffer.par_chunks_mut(width).enumerate().for_each(|(y, row)| {
+            let sy = (y / scale_factor as usize).min(scaled_height - 1);
+            for (x, pixel) in row.iter_mut().enumerate() {
+                let sx = (x / scale_factor as usize).min(scaled_width - 1);
+                *pixel = scaled_buffer[sy * scaled_width + sx];
+            }
+        });
+    }
 }
 
 fn create_scene(camera: Camera) -> Scene {
@@ -831,7 +854,7 @@ fn main() {
         } else {
             "target/day1-textured.png".into()
         };
-        render(&mut framebuffer, &scene, if flat { 2 } else { 0 });
+        render(&mut framebuffer, &scene, if flat { 2 } else { 0 }, 1);
         crate::core::hud::draw(&mut framebuffer, &scene);
         save_test_render(&framebuffer, &path).expect("Could not save day render");
         println!(
@@ -845,7 +868,7 @@ fn main() {
         scene.set_story_day(1);
         scene.set_day_phase(crate::core::scene::DayPhase::Night);
         let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-        render(&mut framebuffer, &scene, 0);
+        render(&mut framebuffer, &scene, 0, 1);
         match save_test_render(&framebuffer, "target/cafe-test.png") {
             Ok(()) => println!("Saved day 1 cafe view to target/cafe-test.png"),
             Err(error) => eprintln!("Could not save renderer test: {}", error),
@@ -878,7 +901,7 @@ fn main() {
             )));
 
         let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-        render(&mut framebuffer, &scene, 0);
+        render(&mut framebuffer, &scene, 0, 1);
         crate::core::hud::draw(&mut framebuffer, &scene);
         save_test_render(&framebuffer, "target/secret-room.png").expect("Could not save room");
         println!("Saved unlocked room to target/secret-room.png");
@@ -899,7 +922,7 @@ fn main() {
         } else {
             2
         };
-        render(&mut framebuffer, &scene, test_render_mode);
+        render(&mut framebuffer, &scene, test_render_mode, 1);
         match save_test_render(&framebuffer, output_path) {
             Ok(()) => println!("Saved renderer test to {output_path}"),
             Err(error) => eprintln!("Could not save renderer test: {error}"),
@@ -920,6 +943,7 @@ fn main() {
 
     let mut camera_moved = true;
     let mut render_mode = 0;
+    let mut was_moving = false;
     let mut last_mouse_position: Option<(f32, f32)> = None;
 
     let mut was_mouse_down = false;
@@ -943,198 +967,394 @@ fn main() {
 
     window.set_title(&get_title(&scene));
 
-    while window.is_open() && !window.is_key_down(Key::Escape) {
+    let mut app_mode = AppMode::MainMenu;
+    let mut menu_selection = 0;
+    let mut cinematic_state: Option<CinematicState> = None;
+
+    // Render initial background for menu
+    render(&mut framebuffer, &scene, 0, 1);
+
+    while window.is_open() {
         let mut temporal_change = false;
-        // Temporary render mode bindings
-        if window.is_key_pressed(Key::Key8, minifb::KeyRepeat::No) {
-            render_mode = 0;
-            camera_moved = true;
-        }
-        if window.is_key_pressed(Key::Key9, minifb::KeyRepeat::No) {
-            render_mode = 1;
-            camera_moved = true;
-        }
-        if window.is_key_pressed(Key::Key0, minifb::KeyRepeat::No) {
-            render_mode = 2;
-            camera_moved = true;
-        }
 
-        // Time of Day
-        if window.is_key_pressed(Key::F1, minifb::KeyRepeat::No) {
-            scene.set_day_phase(DayPhase::Dawn);
-            temporal_change = true;
-            scene.update_transition(1.0);
-            camera_moved = true;
-            window.set_title(&get_title(&scene));
-        }
-        if window.is_key_pressed(Key::F2, minifb::KeyRepeat::No) {
-            scene.set_day_phase(DayPhase::Day);
-            temporal_change = true;
-            scene.update_transition(1.0);
-            camera_moved = true;
-            window.set_title(&get_title(&scene));
-        }
-        if window.is_key_pressed(Key::F3, minifb::KeyRepeat::No) {
-            scene.set_day_phase(DayPhase::Sunset);
-            temporal_change = true;
-            scene.update_transition(1.0);
-            camera_moved = true;
-            window.set_title(&get_title(&scene));
-        }
-        if window.is_key_pressed(Key::F4, minifb::KeyRepeat::No) {
-            scene.set_day_phase(DayPhase::Night);
-            temporal_change = true;
-            scene.update_transition(1.0);
-            camera_moved = true;
-            window.set_title(&get_title(&scene));
-        }
-
-        // Day Progression
-        for (i, key) in [
-            Key::F5,
-            Key::F6,
-            Key::F7,
-            Key::F8,
-            Key::F9,
-            Key::F10,
-            Key::F11,
-        ]
-        .iter()
-        .enumerate()
-        {
-            if window.is_key_pressed(*key, minifb::KeyRepeat::No) {
-                scene.set_story_day((i + 1) as u32);
-                temporal_change = true;
-                camera_moved = true;
-                window.set_title(&get_title(&scene));
-            }
-        }
-
-        if window.is_key_pressed(Key::F12, minifb::KeyRepeat::No) {
-            if toggle_secret_room_shortcut(&mut scene) {
-                scene.camera = if scene.game_state.secret_room_open {
-                    secret_room_camera()
-                } else {
-                    create_camera()
-                };
-                temporal_change = true;
-                camera_moved = true;
-                window.set_title(&get_title(&scene));
-                println!(
-                    "Acceso directo F12: habitación {} abierta.",
+        if window.is_key_pressed(Key::Escape, minifb::KeyRepeat::No) {
+            match app_mode {
+                AppMode::MainMenu => break,
+                AppMode::Exploration => {
+                    app_mode = AppMode::MainMenu;
+                    camera_moved = true;
+                }
+                AppMode::Cinematic => {
+                    if let Some(ref state) = cinematic_state {
+                        scene.camera = state.original_camera.clone();
+                    }
+                    scene.set_story_day(1);
+                    scene.set_day_phase(DayPhase::Dawn);
                     if scene.game_state.secret_room_open {
-                        "abierta"
-                    } else {
-                        "cerrada"
+                        toggle_secret_room_shortcut(&mut scene);
                     }
-                );
-            }
-        }
-
-        let orbit = [
-            (Key::Left, ROTATION_SPEED, 0.0),
-            (Key::Right, -ROTATION_SPEED, 0.0),
-            (Key::Up, 0.0, -ROTATION_SPEED),
-            (Key::Down, 0.0, ROTATION_SPEED),
-        ];
-        for (key, delta_yaw, delta_pitch) in orbit {
-            if window.is_key_down(key) {
-                scene.camera.orbit(delta_yaw, delta_pitch);
-                camera_moved = true;
-            }
-        }
-
-        let mouse_down = window.get_mouse_down(MouseButton::Left);
-        let mouse_position = window.get_mouse_pos(MouseMode::Pass);
-
-        if mouse_down && !was_mouse_down {
-            pointer.press(mouse_position);
-        }
-        if mouse_down {
-            pointer.update(mouse_position);
-        }
-        if !mouse_down && was_mouse_down {
-            if let Some((x, y)) = pointer.release(mouse_position) {
-                if let Some(hit) = pick(
-                    &scene,
-                    &scene.camera,
-                    x,
-                    y,
-                    framebuffer.width,
-                    framebuffer.height,
-                    FOV,
-                ) {
-                    let id = ObjectId(hit.object_index);
-                    if let Some(kind) = scene.interaction_for(id) {
-                        match kind {
-                            InteractiveKind::Clue(i) => {
-                                if scene.discover_clue(id) {
-                                    camera_moved = true;
-                                    window.set_title(&get_title(&scene));
-                                    println!("Pista {} encontrada!", i + 1);
-                                }
-                            }
-                            InteractiveKind::BackDoor => {
-                                if scene.toggle_secret_room() {
-                                    scene.camera = if scene.game_state.secret_room_open {
-                                        secret_room_camera()
-                                    } else {
-                                        create_camera()
-                                    };
-                                    camera_moved = true;
-                                    window.set_title(&get_title(&scene));
-                                    println!(
-                                        "Puerta {}",
-                                        if scene.game_state.secret_room_open {
-                                            "abierta"
-                                        } else {
-                                            "cerrada"
-                                        }
-                                    );
-                                } else {
-                                    println!(
-                                        "La puerta necesita las tres pistas ({}/3).",
-                                        scene.game_state.clues_count()
-                                    );
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+                    app_mode = AppMode::MainMenu;
+                    cinematic_state = None;
+                    camera_moved = true;
                 }
             }
         }
-        was_mouse_down = mouse_down;
 
-        if mouse_down {
-            if let (Some((x, y)), Some((last_x, last_y))) = (mouse_position, last_mouse_position) {
-                let drag_sensitivity = 0.006;
-                let delta_yaw = -(x - last_x) * drag_sensitivity;
-                let delta_pitch = (y - last_y) * drag_sensitivity;
-                if pointer.dragging && (delta_yaw != 0.0 || delta_pitch != 0.0) {
+        if app_mode == AppMode::MainMenu {
+            if window.is_key_pressed(Key::Up, minifb::KeyRepeat::No) {
+                menu_selection = 0;
+            }
+            if window.is_key_pressed(Key::Down, minifb::KeyRepeat::No) {
+                menu_selection = 1;
+            }
+            if window.is_key_pressed(Key::Enter, minifb::KeyRepeat::No) {
+                if menu_selection == 0 {
+                    app_mode = AppMode::Exploration;
+                    scene.set_story_day(1);
+                    scene.set_day_phase(DayPhase::Dawn);
+                    if scene.game_state.secret_room_open {
+                        toggle_secret_room_shortcut(&mut scene);
+                    }
+                    camera_moved = true;
+                } else {
+                    app_mode = AppMode::Cinematic;
+                    cinematic_state = Some(CinematicState {
+                        start_time: Instant::now(),
+                        original_camera: scene.camera.clone(),
+                    });
+                    scene.set_story_day(1);
+                    scene.set_day_phase(DayPhase::Dawn);
+                    if scene.game_state.secret_room_open {
+                        toggle_secret_room_shortcut(&mut scene);
+                    }
+                    camera_moved = true;
+                }
+            }
+            // Draw menu overlay over whatever is in the framebuffer
+            crate::core::hud::text(&mut framebuffer, "LA PUERTA TRASERA", 160, 100, 5);
+            crate::core::hud::text(&mut framebuffer, "Siete Dias de Secretos", 160, 150, 2);
+
+            let color1 = if menu_selection == 0 {
+                ">> 1. EXPLORAR EL MUNDO"
+            } else {
+                "   1. EXPLORAR EL MUNDO"
+            };
+            let color2 = if menu_selection == 1 {
+                ">> 2. VIVIR LOS 7 DIAS "
+            } else {
+                "   2. VIVIR LOS 7 DIAS "
+            };
+
+            crate::core::hud::text(&mut framebuffer, color1, 200, 300, 2);
+            crate::core::hud::text(&mut framebuffer, color2, 200, 350, 2);
+            crate::core::hud::text(&mut framebuffer, "ENTER CONFIRMAR   ESC SALIR", 200, 500, 1);
+
+            window
+                .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)
+                .unwrap();
+            continue;
+        }
+
+        if app_mode == AppMode::Cinematic {
+            if let Some(ref state) = cinematic_state {
+                let t = state.start_time.elapsed().as_secs_f32();
+                // 7 Acts over 75 seconds. ~10.7 seconds per act.
+                // Act 1: Dawn, pan around facade
+                // Act 2 (10s): Day 2 Day, pan to garden
+                // Act 3 (20s): Day 3 Day, interior
+                // Act 4 (30s): Day 4 Sunset, back garden
+                // Act 5 (40s): Day 5 Sunset, higanbana
+                // Act 6 (50s): Day 6 Night, lantern
+                // Act 7 (60s): Day 7 Night, trapdoor opens
+
+                let mut target_day = 1;
+                let mut target_phase = DayPhase::Dawn;
+                let mut c_eye = Vec3::new(-3.5, 1.2, 4.0);
+                let mut c_center = Vec3::new(0.0, 0.5, 0.0);
+                let mut open_door = false;
+
+                if t < 10.0 {
+                    target_day = 1;
+                    target_phase = DayPhase::Dawn;
+                    let lerp = t / 10.0;
+                    c_eye = Vec3::new(-3.5 + lerp, 1.2, 4.0 - lerp);
+                } else if t < 20.0 {
+                    target_day = 2;
+                    target_phase = DayPhase::Day;
+                    let lerp = (t - 10.0) / 10.0;
+                    c_eye = Vec3::new(-2.5 + lerp * 5.0, 1.2 + lerp * 0.3, 3.0 - lerp * 1.0);
+                    c_center = Vec3::new(0.0 + lerp * 0.5, 0.5, 0.0 - lerp * 1.0);
+                } else if t < 30.0 {
+                    target_day = 3;
+                    target_phase = DayPhase::Day;
+                    let lerp = (t - 20.0) / 10.0;
+                    c_eye = Vec3::new(0.5, 0.9, -0.3 - lerp * 0.2);
+                    c_center = Vec3::new(0.5, 0.5, -1.6);
+                } else if t < 40.0 {
+                    target_day = 4;
+                    target_phase = DayPhase::Sunset;
+                    let lerp = (t - 30.0) / 10.0;
+                    c_eye = Vec3::new(2.5, 1.5, 2.0 - lerp * 4.0);
+                    c_center = Vec3::new(0.5, 0.5, -1.0);
+                } else if t < 50.0 {
+                    target_day = 5;
+                    target_phase = DayPhase::Sunset;
+                    let lerp = (t - 40.0) / 10.0;
+                    c_eye = Vec3::new(2.0, 0.6, -1.8);
+                    c_center = Vec3::new(2.3 - lerp * 0.2, 0.1, -2.1 + lerp * 0.2);
+                } else if t < 60.0 {
+                    target_day = 6;
+                    target_phase = DayPhase::Night;
+                    let lerp = (t - 50.0) / 10.0;
+                    c_eye = Vec3::new(-1.0 - lerp * 0.5, 1.0, 0.0 + lerp * 0.5);
+                    c_center = Vec3::new(-1.5, 0.5, 1.2);
+                } else if t < 70.0 {
+                    target_day = 7;
+                    target_phase = DayPhase::Night;
+                    let lerp = (t - 60.0) / 10.0;
+                    c_eye = Vec3::new(1.0, 2.0 - lerp * 0.5, 1.5 - lerp * 0.5);
+                    c_center = Vec3::new(1.0, 0.0, -1.0);
+                    open_door = true;
+                } else if t < 80.0 {
+                    target_day = 7;
+                    target_phase = DayPhase::Night;
+                    c_eye = Vec3::new(0.0, -4.0, 0.0);
+                    c_center = Vec3::new(0.0, -4.5, -2.0);
+                    open_door = true;
+                } else {
+                    app_mode = AppMode::MainMenu;
+                    scene.camera = state.original_camera.clone();
+                    scene.set_story_day(1);
+                    scene.set_day_phase(DayPhase::Dawn);
+                    if scene.game_state.secret_room_open {
+                        toggle_secret_room_shortcut(&mut scene);
+                    }
+                    cinematic_state = None;
+                    camera_moved = true;
+                    continue;
+                }
+
+                if scene.day_count != target_day {
+                    scene.set_story_day(target_day);
+                    temporal_change = true;
+                }
+                if scene.day_phase != target_phase {
+                    scene.set_day_phase(target_phase);
+                    scene.update_transition(1.0);
+                    temporal_change = true;
+                }
+                if scene.game_state.secret_room_open != open_door {
+                    toggle_secret_room_shortcut(&mut scene);
+                    temporal_change = true;
+                }
+
+                scene.camera = Camera::new(c_eye, c_center, Vec3::new(0.0, 1.0, 0.0));
+                camera_moved = true;
+            }
+        }
+
+        if app_mode == AppMode::Exploration {
+            // Temporary render mode bindings
+            if window.is_key_pressed(Key::Key8, minifb::KeyRepeat::No) {
+                render_mode = 0;
+                camera_moved = true;
+            }
+            if window.is_key_pressed(Key::Key9, minifb::KeyRepeat::No) {
+                render_mode = 1;
+                camera_moved = true;
+            }
+            if window.is_key_pressed(Key::Key0, minifb::KeyRepeat::No) {
+                render_mode = 2;
+                camera_moved = true;
+            }
+
+            // Time of Day
+            if window.is_key_pressed(Key::F1, minifb::KeyRepeat::No) {
+                scene.set_day_phase(DayPhase::Dawn);
+                temporal_change = true;
+                scene.update_transition(1.0);
+                camera_moved = true;
+                window.set_title(&get_title(&scene));
+            }
+            if window.is_key_pressed(Key::F2, minifb::KeyRepeat::No) {
+                scene.set_day_phase(DayPhase::Day);
+                temporal_change = true;
+                scene.update_transition(1.0);
+                camera_moved = true;
+                window.set_title(&get_title(&scene));
+            }
+            if window.is_key_pressed(Key::F3, minifb::KeyRepeat::No) {
+                scene.set_day_phase(DayPhase::Sunset);
+                temporal_change = true;
+                scene.update_transition(1.0);
+                camera_moved = true;
+                window.set_title(&get_title(&scene));
+            }
+            if window.is_key_pressed(Key::F4, minifb::KeyRepeat::No) {
+                scene.set_day_phase(DayPhase::Night);
+                temporal_change = true;
+                scene.update_transition(1.0);
+                camera_moved = true;
+                window.set_title(&get_title(&scene));
+            }
+
+            // Day Progression
+            for (i, key) in [
+                Key::F5,
+                Key::F6,
+                Key::F7,
+                Key::F8,
+                Key::F9,
+                Key::F10,
+                Key::F11,
+            ]
+            .iter()
+            .enumerate()
+            {
+                if window.is_key_pressed(*key, minifb::KeyRepeat::No) {
+                    scene.set_story_day((i + 1) as u32);
+                    temporal_change = true;
+                    camera_moved = true;
+                    window.set_title(&get_title(&scene));
+                }
+            }
+
+            if window.is_key_pressed(Key::F12, minifb::KeyRepeat::No) {
+                if toggle_secret_room_shortcut(&mut scene) {
+                    scene.camera = if scene.game_state.secret_room_open {
+                        secret_room_camera()
+                    } else {
+                        create_camera()
+                    };
+                    temporal_change = true;
+                    camera_moved = true;
+                    window.set_title(&get_title(&scene));
+                    println!(
+                        "Acceso directo F12: habitación {} abierta.",
+                        if scene.game_state.secret_room_open {
+                            "abierta"
+                        } else {
+                            "cerrada"
+                        }
+                    );
+                }
+            }
+
+            let orbit = [
+                (Key::Left, ROTATION_SPEED, 0.0),
+                (Key::Right, -ROTATION_SPEED, 0.0),
+                (Key::Up, 0.0, -ROTATION_SPEED),
+                (Key::Down, 0.0, ROTATION_SPEED),
+            ];
+            for (key, delta_yaw, delta_pitch) in orbit {
+                if window.is_key_down(key) {
                     scene.camera.orbit(delta_yaw, delta_pitch);
                     camera_moved = true;
                 }
             }
-            last_mouse_position = mouse_position;
-        } else {
-            last_mouse_position = None;
-        }
 
-        if let Some((_, scroll_delta)) = window.get_scroll_wheel() {
-            if scroll_delta != 0.0 {
-                scene.camera.zoom(scroll_delta);
-                camera_moved = true;
+            let mouse_down = window.get_mouse_down(MouseButton::Left);
+            let mouse_position = window.get_mouse_pos(MouseMode::Pass);
+
+            if mouse_down && !was_mouse_down {
+                pointer.press(mouse_position);
             }
-        }
+            if mouse_down {
+                pointer.update(mouse_position);
+            }
+            if !mouse_down && was_mouse_down {
+                if let Some((x, y)) = pointer.release(mouse_position) {
+                    if let Some(hit) = pick(
+                        &scene,
+                        &scene.camera,
+                        x,
+                        y,
+                        framebuffer.width,
+                        framebuffer.height,
+                        FOV,
+                    ) {
+                        let id = ObjectId(hit.object_index);
+                        if let Some(kind) = scene.interaction_for(id) {
+                            match kind {
+                                InteractiveKind::Clue(i) => {
+                                    if scene.discover_clue(id) {
+                                        camera_moved = true;
+                                        window.set_title(&get_title(&scene));
+                                        println!("Pista {} encontrada!", i + 1);
+                                    }
+                                }
+                                InteractiveKind::BackDoor => {
+                                    if scene.toggle_secret_room() {
+                                        scene.camera = if scene.game_state.secret_room_open {
+                                            secret_room_camera()
+                                        } else {
+                                            create_camera()
+                                        };
+                                        camera_moved = true;
+                                        window.set_title(&get_title(&scene));
+                                        println!(
+                                            "Puerta {}",
+                                            if scene.game_state.secret_room_open {
+                                                "abierta"
+                                            } else {
+                                                "cerrada"
+                                            }
+                                        );
+                                    } else {
+                                        println!(
+                                            "La puerta necesita las tres pistas ({}/3).",
+                                            scene.game_state.clues_count()
+                                        );
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+            was_mouse_down = mouse_down;
 
+            if mouse_down {
+                if let (Some((x, y)), Some((last_x, last_y))) =
+                    (mouse_position, last_mouse_position)
+                {
+                    let drag_sensitivity = 0.006;
+                    let delta_yaw = -(x - last_x) * drag_sensitivity;
+                    let delta_pitch = (y - last_y) * drag_sensitivity;
+                    if pointer.dragging && (delta_yaw != 0.0 || delta_pitch != 0.0) {
+                        scene.camera.orbit(delta_yaw, delta_pitch);
+                        camera_moved = true;
+                    }
+                }
+                last_mouse_position = mouse_position;
+            } else {
+                last_mouse_position = None;
+            }
+            was_moving = (mouse_down && pointer.dragging) || orbit.iter().any(|(k, _, _)| window.is_key_down(*k));
+
+            if let Some((_, scroll_delta)) = window.get_scroll_wheel() {
+                if scroll_delta != 0.0 {
+                    scene.camera.zoom(scroll_delta);
+                    camera_moved = true;
+                }
+            }
+        } // End Exploration block
+
+        let is_moving = was_moving;
         if camera_moved {
             let previous = temporal_change.then(|| display.clone());
-            render(&mut framebuffer, &scene, render_mode);
+            render(&mut framebuffer, &scene, render_mode, if is_moving { 4 } else { 1 });
             crate::core::hud::draw(&mut framebuffer, &scene);
-            camera_moved = false;
+            if !is_moving { camera_moved = false; }
             fade = previous.map(|pixels| (pixels, Instant::now()));
         }
+
+        if was_moving && !is_moving {
+            render(&mut framebuffer, &scene, render_mode, 1);
+            crate::core::hud::draw(&mut framebuffer, &scene);
+        }
+        was_moving = is_moving;
 
         if let Some((previous, start)) = &fade {
             let progress = (start.elapsed().as_secs_f32() / 0.55).clamp(0.0, 1.0);
@@ -1432,7 +1652,7 @@ mod story_tests {
         let mut previous = Vec::new();
         for day in 1..=7 {
             scene.set_story_day(day);
-            render(&mut frame, &scene, 0);
+            render(&mut frame, &scene, 0, 1);
             assert!(
                 frame.buffer != previous,
                 "Day {day} has no visible scene change"
