@@ -933,7 +933,7 @@ fn main() {
     let frame_delay = Duration::from_millis(16);
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let mut window = Window::new(
-        "La Puerta Trasera | DÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­a 1",
+        "La Puerta Trasera",
         WIDTH,
         HEIGHT,
         WindowOptions::default(),
@@ -973,6 +973,7 @@ fn main() {
 
     // Render initial background for menu
     render(&mut framebuffer, &scene, 0, 1);
+    let menu_background = framebuffer.buffer.clone();
 
     while window.is_open() {
         let mut temporal_change = false;
@@ -1030,6 +1031,8 @@ fn main() {
                     camera_moved = true;
                 }
             }
+            // Restore pristine background to erase previous menu frames
+            framebuffer.buffer.copy_from_slice(&menu_background);
             // Draw menu overlay over whatever is in the framebuffer
             crate::core::hud::text(&mut framebuffer, "LA PUERTA TRASERA", 160, 100, 5);
             crate::core::hud::text(&mut framebuffer, "Siete Dias de Secretos", 160, 150, 2);
