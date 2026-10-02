@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use crate::assets::{
     build_bamboo_cluster, build_base_diorama, build_cafe_patio, build_japanese_cafe,
-    build_rock_garden, build_sakura_tree_variant, build_secret_room_interior, build_toro_lantern,
+    build_rock_garden, build_sakura_tree_variant, build_secret_room_interior, build_toro_lantern, build_torii_gate, build_tsukubai, build_path, build_back_garden_plants, build_japanese_ruins,
     AssetMaterials,
 };
 use crate::core::camera::Camera;
@@ -52,6 +52,11 @@ const MAX_DEPTH: u32 = 3;
 
 pub fn reflect(incident: &Vec3, normal: &Vec3) -> Vec3 {
     incident - normal * (2.0 * dot(incident, normal))
+}
+
+fn toggle_secret_room_shortcut(scene: &mut Scene) -> bool {
+    scene.game_state.door_unlocked = true;
+    scene.toggle_secret_room()
 }
 
 fn refract_direction(incident: &Vec3, normal: &Vec3, eta_ratio: f32) -> Option<Vec3> {
@@ -127,7 +132,7 @@ pub fn shade(intersect: &Intersect, ray_origin: &Vec3, scene: &Scene, render_mod
         let drop_tint = Color::new(255, 255, 255) * (0.03 * blend_factor);
 
         let bottom_factor = (-water_normal_mapped.y).max(0.0);
-        let bottom_shadow = 1.0 - (bottom_factor * 0.4 * blend_factor); // 0.4 controla qué tan oscura es
+        let bottom_shadow = 1.0 - (bottom_factor * 0.4 * blend_factor); // 0.4 controla quÃƒÆ’Ã‚Â© tan oscura es
 
         diffuse_color = (diffuse_color * bottom_shadow) + drop_tint;
     }
@@ -229,7 +234,7 @@ pub fn cast_ray(
     render_mode: u8,
 ) -> Color {
     if depth > MAX_DEPTH {
-        return scene.skybox.sample(ray_origin, ray_direction);
+        return environment_color(scene, ray_origin, ray_direction);
     }
 
     let mut closest: Option<Intersect> = None;
@@ -251,7 +256,7 @@ pub fn cast_ray(
     }
 
     let Some(intersect) = closest else {
-        return scene.skybox.sample(ray_origin, ray_direction);
+        return environment_color(scene, ray_origin, ray_direction);
     };
 
     let color = shade(&intersect, ray_origin, scene, render_mode);
@@ -315,6 +320,14 @@ pub fn cast_ray(
     result
 }
 
+fn environment_color(scene: &Scene, ray_origin: &Vec3, ray_direction: &Vec3) -> Color {
+    if scene.game_state.secret_room_open {
+        Color::new(0, 0, 0)
+    } else {
+        scene.skybox.sample(ray_origin, ray_direction)
+    }
+}
+
 use rayon::prelude::*;
 
 pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8) {
@@ -355,9 +368,14 @@ fn create_scene(camera: Camera) -> Scene {
         &mut objects,
         build_base_diorama(Vec3::zeros(), 1.0, &materials),
     );
-    // append_asset(&mut objects, build_path(Vec3::zeros(), 1.0, &materials));
+    append_asset(&mut objects, build_path(Vec3::zeros(), 1.0, &materials));
+    append_asset(&mut objects, build_torii_gate(Vec3::new(0.0, 0.0, 2.6), 1.2, &materials));
+    append_asset(&mut objects, build_tsukubai(Vec3::new(-2.2, 0.0, 1.2), 0.8, &materials));
+    append_asset(&mut objects, build_tsukubai(Vec3::new(2.4, 0.0, -0.5), 0.7, &materials));
+    append_asset(&mut objects, build_back_garden_plants(Vec3::zeros(), 1.0, &materials));
+    append_asset(&mut objects, build_japanese_ruins(Vec3::zeros(), 1.0, &materials));
 
-    // ================= CAFÉ =================
+    // ================= CAFÃƒÆ’Ã¢â‚¬Â° =================
     let cafe_pos = Vec3::new(0.5, 0.0, -1.0);
     append_asset(&mut objects, build_japanese_cafe(cafe_pos, 1.0, &materials));
     append_asset(
@@ -584,12 +602,11 @@ fn create_scene(camera: Camera) -> Scene {
 
 fn secret_room_camera() -> Camera {
     Camera::new(
-        Vec3::new(2.5, -0.5, -6.5), // Look from further back into the room
+        Vec3::new(2.5, -1.0, -6.5), // Look from further back into the room
         Vec3::new(2.5, -1.8, -2.5), // Look directly at the room center
         Vec3::y(),
     )
 }
-
 
 fn exterior_camera() -> Camera {
     Camera::new(
@@ -614,7 +631,6 @@ fn trapdoor_camera() -> Camera {
         Vec3::y(),
     )
 }
-
 
 fn test_camera() -> Camera {
     Camera::new(
@@ -839,6 +855,17 @@ fn main() {
             scene.discover_clue(ObjectId(index));
         }
         assert!(scene.toggle_secret_room());
+        scene.skybox = crate::core::scene::Skybox::new(Color::new(0, 0, 0));
+        
+        let mut void_mat = Material::new(Color::new(0,0,0));
+        void_mat.diffuse = Color::new(0, 0, 0);
+        void_mat.texture = None;
+        scene.objects.push(Box::new(crate::core::object::Object::new(
+            Box::new(crate::shapes::cube::Cube),
+            Transform::new(Vec3::new(2.5, 0.0, 0.0), Vec3::zeros(), Vec3::new(30.0, 30.0, 30.0)),
+            void_mat,
+        )));
+        
         let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
         render(&mut framebuffer, &scene, 0);
         crate::core::hud::draw(&mut framebuffer, &scene);
@@ -872,7 +899,7 @@ fn main() {
     let frame_delay = Duration::from_millis(16);
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let mut window = Window::new(
-        "La Puerta Trasera | Día 1",
+        "La Puerta Trasera | DÃƒÆ’Ã‚Â­a 1",
         WIDTH,
         HEIGHT,
         WindowOptions::default(),
@@ -894,13 +921,13 @@ fn main() {
         let day = scene.day_count;
         let phase = match scene.day_phase {
             DayPhase::Dawn => "Amanecer",
-            DayPhase::Day => "Día",
+            DayPhase::Day => "DÃƒÆ’Ã‚Â­a",
             DayPhase::Sunset => "Atardecer",
             DayPhase::Night => "Noche",
         };
         let clues = scene.game_state.clues_count();
         let clue_str = format!(" | PISTAS {}/3", clues);
-        format!("La Puerta Trasera — DÍA {} ({}){}", day, phase, clue_str)
+        format!("La Puerta Trasera ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â DÃƒÆ’Ã‚ÂA {} ({}){}", day, phase, clue_str)
     };
 
     window.set_title(&get_title(&scene));
@@ -969,6 +996,27 @@ fn main() {
                 temporal_change = true;
                 camera_moved = true;
                 window.set_title(&get_title(&scene));
+            }
+        }
+
+        if window.is_key_pressed(Key::F12, minifb::KeyRepeat::No) {
+            if toggle_secret_room_shortcut(&mut scene) {
+                scene.camera = if scene.game_state.secret_room_open {
+                    secret_room_camera()
+                } else {
+                    create_camera()
+                };
+                temporal_change = true;
+                camera_moved = true;
+                window.set_title(&get_title(&scene));
+                println!(
+                    "Acceso directo F12: habitación {}.",
+                    if scene.game_state.secret_room_open {
+                        "abierta"
+                    } else {
+                        "cerrada"
+                    }
+                );
             }
         }
 
@@ -1203,6 +1251,37 @@ mod shadow_tests {
 }
 
 #[cfg(test)]
+mod secret_room_background_tests {
+    use super::cast_ray;
+    use crate::core::camera::Camera;
+    use crate::core::scene::{Scene, Skybox};
+    use crate::materials::color::Color;
+    use nalgebra_glm::Vec3;
+
+    #[test]
+    fn secret_room_missed_rays_use_black_background_at_all_depths() {
+        let camera = Camera::new(
+            Vec3::new(0.0, 0.0, 2.0),
+            Vec3::zeros(),
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        let mut scene = Scene::new(
+            Vec::new(),
+            Vec::new(),
+            camera,
+            Skybox::new(Color::new(100, 130, 180)),
+        );
+        let origin = Vec3::new(0.0, 0.0, 2.0);
+        let direction = Vec3::new(0.0, 1.0, 0.0);
+
+        assert_ne!(cast_ray(&origin, &direction, &scene, 0, 0).to_hex(), 0);
+        scene.game_state.secret_room_open = true;
+        assert_eq!(cast_ray(&origin, &direction, &scene, 0, 0).to_hex(), 0);
+        assert_eq!(cast_ray(&origin, &direction, &scene, 4, 0).to_hex(), 0);
+    }
+}
+
+#[cfg(test)]
 mod story_tests {
     use super::*;
 
@@ -1274,7 +1353,7 @@ mod story_tests {
         }
         scene.set_story_day(5);
         scene.camera = create_camera();
-          pick_near(&scene, Vec3::new(2.15, 0.40, -2.1), clues[0]);
+        pick_near(&scene, Vec3::new(2.15, 0.40, -2.1), clues[0]);
         assert!(scene.discover_clue(clues[0]));
         assert!(!scene.discover_clue(clues[0]));
         assert!(!scene.toggle_secret_room());
@@ -1293,25 +1372,27 @@ mod story_tests {
         assert!(!scene.discover_clue(clues[2]));
         scene.set_day_phase(DayPhase::Night);
         println!("CLUE 2 VISIBLE: {}", scene.is_object_visible(clues[2]));
-          pick_near(&scene, Vec3::new(2.6, 0.38, 1.1), clues[2]);
+        pick_near(&scene, Vec3::new(2.6, 0.38, 1.1), clues[2]);
         assert!(scene.discover_clue(clues[2]));
         assert_eq!(scene.game_state.clues_count(), 3);
         scene.camera = test_camera();
         // pick_near(&scene, Vec3::new(2.5, 0.125, -1.5), door);
         println!("CLUE 0: {:?}", clues[0]);
-          println!("CLUE 1: {:?}", clues[1]);
-          println!("CLUE 2: {:?}", clues[2]);
-          println!("DOOR: {:?}", door);
-          let hidden: Vec<_> = (0..scene.objects.len())
-            .map(ObjectId)
-            .filter(|id| !scene.is_object_visible(*id) && !clues.contains(id))
-            .collect();
-        assert!(hidden.len() >= 8);
+        println!("CLUE 1: {:?}", clues[1]);
+        println!("CLUE 2: {:?}", clues[2]);
+        println!("DOOR: {:?}", door);
+        assert!(scene.is_object_visible(door));
         assert!(scene.toggle_secret_room());
-          assert!(hidden.iter().all(|id| scene.is_object_visible(*id)));
-          assert!(scene.lights[scene.secret_room_light.unwrap()].intensity > 0.0);
-          assert!(scene.toggle_secret_room());
+        scene.skybox = crate::core::scene::Skybox::new(Color::new(0, 0, 0));
+        assert!(scene.game_state.secret_room_open);
+        assert!(!scene.is_object_visible(ObjectId(0)));
+        assert!(scene.is_object_visible(door));
+        assert!(scene.lights[scene.secret_room_light.unwrap()].intensity > 0.0);
+        assert!(scene.toggle_secret_room());
+        scene.skybox = crate::core::scene::Skybox::new(Color::new(0, 0, 0));
         scene.set_story_day(7);
+        assert!(scene.is_object_visible(ObjectId(0)));
+        assert!(scene.is_object_visible(door));
         assert!(clues.iter().all(|id| !scene.is_object_visible(*id)));
     }
 
@@ -1329,5 +1410,25 @@ mod story_tests {
             );
             previous.clone_from(&frame.buffer);
         }
+    }
+
+    #[test]
+    fn f12_shortcut_opens_secret_room_without_clues_and_toggles_it_closed() {
+        let mut scene = create_scene(create_camera());
+        let door = interactive_id(&scene, InteractiveKind::BackDoor);
+
+        assert_eq!(scene.game_state.clues_count(), 0);
+        assert!(!scene.game_state.door_unlocked);
+        assert!(scene.is_object_visible(ObjectId(0)));
+        assert!(toggle_secret_room_shortcut(&mut scene));
+        assert!(scene.game_state.door_unlocked);
+        assert!(scene.game_state.secret_room_open);
+        assert!(!scene.is_object_visible(ObjectId(0)));
+        assert!(scene.is_object_visible(door));
+
+        assert!(toggle_secret_room_shortcut(&mut scene));
+        assert!(!scene.game_state.secret_room_open);
+        assert!(scene.is_object_visible(ObjectId(0)));
+        assert!(scene.is_object_visible(door));
     }
 }

@@ -127,12 +127,12 @@ pub fn draw(frame: &mut Framebuffer, scene: &Scene) {
     };
     text(frame, status, frame.width as i32 - 200, 47, 1);
     let hint = if scene.game_state.secret_room_open {
-        "ESPEJO - VIDRIO - RECUERDOS"
+        "F12 CIERRA / ESPEJO - VIDRIO - RECUERDOS"
     } else if scene.game_state.door_unlocked {
-        "BUSCA LA PUERTA DETRÁS DEL CAFÉ"
+        "PUERTA: CLIC / F12 ACCESO DIRECTO"
     } else {
         match scene.day_count {
-            1..=3 => "F5-F11 DÍAS / F1-F4 LUZ / ARRASTRA PARA GIRAR",
+            1..=3 => "F5-F11 DÍAS / F1-F4 LUZ / F12 ACCESO DIRECTO",
             4 => "AL ATARDECER ALGO BRILLA DETRÁS DEL CAFÉ",
             5 => "UNA FLOR ROJA JUNTO A LA PUERTA TRASERA",
             6 => "LA NOCHE REVELA UN CUADRO JUNTO AL FAROL",

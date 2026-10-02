@@ -272,7 +272,11 @@ impl Scene {
     }
 
     pub fn is_object_visible(&self, id: ObjectId) -> bool {
-        !self.hidden_objects.contains(&id)
+        if self.game_state.secret_room_open {
+            self.secret_room_objects.contains(&id) || self.door_objects.contains(&id)
+        } else {
+            !self.hidden_objects.contains(&id)
+        }
     }
 
     pub fn discover_clue(&mut self, id: ObjectId) -> bool {
@@ -431,8 +435,12 @@ impl Scene {
 mod tests {
     use super::{DayPhase, Scene, Skybox};
     use crate::core::camera::Camera;
-    use crate::core::interaction::InteractiveKind;
+    use crate::core::interaction::{InteractiveKind, ObjectId};
+    use crate::core::object::Object;
+    use crate::core::ray_intersect::Material;
+    use crate::core::transform::Transform;
     use crate::materials::color::Color;
+    use crate::shapes::cube::Cube;
     use nalgebra_glm::Vec3;
 
     #[test]
@@ -455,5 +463,45 @@ mod tests {
         assert!(scene.is_object_visible(note));
         assert!(scene.discover_clue(note));
         assert!(!scene.is_object_visible(note));
+    }
+
+    #[test]
+    fn opening_secret_room_hides_exterior_and_keeps_room_and_door_visible() {
+        let camera = Camera::new(
+            Vec3::new(0.0, 0.0, 5.0),
+            Vec3::zeros(),
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        let material = Material::new(Color::new(140, 120, 100));
+        let objects = (0..3)
+            .map(|_| {
+                Box::new(Object::new(
+                    Box::new(Cube),
+                    Transform::new(Vec3::zeros(), Vec3::zeros(), Vec3::new(0.5, 0.5, 0.5)),
+                    material.clone(),
+                )) as Box<dyn crate::core::ray_intersect::RayIntersect>
+            })
+            .collect();
+        let mut scene = Scene::new(
+            objects,
+            Vec::new(),
+            camera,
+            Skybox::new(Color::new(0, 0, 0)),
+        );
+        let exterior = ObjectId(0);
+        let room = scene.register_secret_room_object(1);
+        let door = scene.register_door_part(2);
+
+        assert!(scene.is_object_visible(exterior));
+        assert!(!scene.is_object_visible(room));
+        assert!(scene.is_object_visible(door));
+        scene.game_state.door_unlocked = true;
+        assert!(scene.toggle_secret_room());
+        assert!(!scene.is_object_visible(exterior));
+        assert!(scene.is_object_visible(room));
+        assert!(scene.is_object_visible(door));
+        assert!(scene.toggle_secret_room());
+        assert!(scene.is_object_visible(exterior));
+        assert!(!scene.is_object_visible(room));
     }
 }
