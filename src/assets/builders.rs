@@ -153,6 +153,35 @@ pub fn build_base_diorama(position: Vec3, scale: f32, materials: &AssetMaterials
         &materials.dark_wood,
     );
 
+    // Deep inverted mountain/base
+    let mut ground = materials.stone.clone();
+    ground.diffuse = Color::new(40, 35, 30); // dark earth
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, -2.0, -2.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(8.6, 1.6, 11.6), scale),
+        &ground,
+    );
+
+    // Add stairs descending into the dark
+    let mut stone_step = materials.stone.clone();
+    stone_step.diffuse = Color::new(80, 80, 80);
+    for i in 0..7 {
+        let step_y = 0.0 - (i as f32 * 0.25);
+        let step_z = -1.1 - (i as f32 * 0.15);
+        append_primitive(
+            &mut objects,
+            Box::new(Cube),
+            scaled_position(position, Vec3::new(2.5, step_y, step_z), scale),
+            Vec3::zeros(),
+            scaled_size(Vec3::new(0.8, 0.1, 0.3), scale),
+            &stone_step,
+        );
+    }
+
+
     // Inner gravel area
     let mut gravel = materials.stone.clone();
     gravel.diffuse = Color::new(190, 190, 185);
@@ -390,7 +419,7 @@ pub fn build_japanese_cafe(position: Vec3, scale: f32, materials: &AssetMaterial
     );
 
     // Two paper shoji panels with narrow wooden lattice bars.
-    for panel_center_x in [-0.93, 0.93] {
+    for panel_center_x in [0.93] { // Left panel open for interior view
         append_primitive(
             &mut objects,
             Box::new(Cube),
@@ -555,6 +584,60 @@ pub fn build_japanese_cafe(position: Vec3, scale: f32, materials: &AssetMaterial
             &noren_mat,
         );
     }
+
+    // Interior (Tatami, Table, Cups, Warm light)
+    let tatami = materials.paper.clone().with_albedo(0.6).with_texture(Arc::new(Texture::load_or_procedural("assets/objetos_textura/tatami.png", ProceduralTexture::Paper)));
+    let mut tatami_mat = tatami.clone();
+    tatami_mat.diffuse = Color::new(200, 210, 160); // light green/yellow tatami fallback
+
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-0.6, 0.23, 0.1), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(1.4, 0.04, 1.2), scale),
+        &tatami_mat,
+    );
+
+    // Low table
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-0.6, 0.35, 0.1), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.6, 0.2, 0.4), scale),
+        &materials.wood,
+    );
+
+    // Cups on table
+    let ceramica = materials.stone.clone();
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(-0.7, 0.44, 0.1), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.04, 0.06, 0.04), scale),
+        &ceramica,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(-0.5, 0.44, 0.1), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.04, 0.06, 0.04), scale),
+        &ceramica,
+    );
+
+    // Interior warm lamp
+    let glow = materials.warm_glow.clone().with_transparency(0.0, 1.0);
+    append_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        scaled_position(position, Vec3::new(-1.0, 0.5, -0.3), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.12, 0.2, 0.12), scale),
+        &glow,
+    );
 
     objects
 }
@@ -1136,12 +1219,13 @@ pub fn build_secret_room_interior(
 
 pub fn build_back_door(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
     let mut objects = Vec::new();
+    // Trapdoor horizontal in the garden
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, 0.76, -0.86), scale),
+        scaled_position(position, Vec3::new(2.5, 0.125, -1.5), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(0.78, 1.10, 0.06), scale),
+        scaled_size(Vec3::new(1.0, 0.05, 1.0), scale),
         &materials.dark_wood,
     );
     objects
