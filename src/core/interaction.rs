@@ -48,6 +48,7 @@ pub struct GameState {
     pub door_unlocked: bool,
     pub secret_room_open: bool,
     pub inside_cafe: bool,
+    pub inside_secret_room_fpp: bool,
     pub selected_object: Option<ObjectId>,
 }
 

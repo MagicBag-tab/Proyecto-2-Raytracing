@@ -99,6 +99,40 @@ pub fn text(frame: &mut Framebuffer, text: &str, x: i32, y: i32, scale: i32) {
     }
 }
 
+pub fn draw_image(frame: &mut Framebuffer, img: &image::DynamicImage, start_x: i32, start_y: i32) {
+    let rgba = img.to_rgba8();
+    let width = rgba.width() as i32;
+    let height = rgba.height() as i32;
+
+    for y in 0..height {
+        for x in 0..width {
+            let px = rgba.get_pixel(x as u32, y as u32);
+            let alpha = px[3] as f32 / 255.0;
+            if alpha > 0.0 {
+                let screen_x = start_x + x;
+                let screen_y = start_y + y;
+                if screen_x >= 0
+                    && screen_y >= 0
+                    && (screen_x as usize) < frame.width
+                    && (screen_y as usize) < frame.height
+                {
+                    let idx = screen_y as usize * frame.width + screen_x as usize;
+                    let bg = frame.buffer[idx];
+                    let bg_r = ((bg >> 16) & 0xFF) as f32;
+                    let bg_g = ((bg >> 8) & 0xFF) as f32;
+                    let bg_b = (bg & 0xFF) as f32;
+
+                    let r = (px[0] as f32 * alpha + bg_r * (1.0 - alpha)) as u32;
+                    let g = (px[1] as f32 * alpha + bg_g * (1.0 - alpha)) as u32;
+                    let b = (px[2] as f32 * alpha + bg_b * (1.0 - alpha)) as u32;
+
+                    frame.buffer[idx] = (r << 16) | (g << 8) | b;
+                }
+            }
+        }
+    }
+}
+
 pub fn draw(frame: &mut Framebuffer, scene: &Scene) {
     let numeral =
         ['一', '二', '三', '四', '五', '六', '七'][(scene.day_count.clamp(1, 7) - 1) as usize];

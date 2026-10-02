@@ -6,7 +6,7 @@ mod shapes;
 
 use crate::assets::build_back_door;
 use crate::assets::{
-    build_day2_flowers, build_day3_decorations, build_day5_higanbana, build_day6_clue,
+    build_day2_flowers, build_more_garden_flowers, build_day3_decorations, build_day5_higanbana, build_day6_clue,
     build_day7_clue,
 };
 use crate::core::interaction::{InteractiveKind, PointerGesture};
@@ -21,8 +21,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::assets::{
-    build_back_garden_plants, build_bamboo_cluster, build_base_diorama, build_cafe_patio,
-    build_japanese_cafe, build_japanese_ruins, build_path, build_rock_garden,
+    build_back_garden_plants, build_bamboo_cluster, build_base_diorama, build_cafe_interior,
+    build_cafe_patio, build_japanese_cafe, build_japanese_ruins, build_path, build_rock_garden,
     build_sakura_tree_variant, build_secret_room_interior, build_torii_gate, build_toro_lantern,
     build_tsukubai, AssetMaterials,
 };
@@ -59,7 +59,6 @@ const FOV: f32 = PI / 3.0;
 const ROTATION_SPEED: f32 = PI / 60.0;
 
 const SHADOW_BIAS_SCALE: f32 = 2e-5;
-const REFLECTION_BIAS: f32 = 1e-3;
 const REFRACTION_BIAS: f32 = 1e-3;
 
 const MAX_DEPTH: u32 = 3;
@@ -71,13 +70,6 @@ pub fn reflect(incident: &Vec3, normal: &Vec3) -> Vec3 {
 fn toggle_secret_room_shortcut(scene: &mut Scene) -> bool {
     scene.game_state.door_unlocked = true;
     scene.toggle_secret_room()
-}
-
-fn refract_direction(incident: &Vec3, normal: &Vec3, eta_ratio: f32) -> Option<Vec3> {
-    let cos_theta = dot(&-*incident, normal).clamp(0.0, 1.0);
-    let perpendicular = eta_ratio * (incident + cos_theta * normal);
-    let discriminant = 1.0 - perpendicular.magnitude_squared();
-    (discriminant >= 0.0).then(|| (perpendicular - discriminant.sqrt() * normal).normalize())
 }
 
 pub fn cast_shadow(
@@ -104,11 +96,17 @@ pub fn cast_shadow(
         if index == intersect.object_index || !scene.is_object_visible(ObjectId(index)) {
             return false;
         }
-        object
-            .ray_intersect_distance(&shadow_ray_origin, &shadow_direction)
-            .is_some_and(|blocker_distance| {
-                blocker_distance > 0.0 && blocker_distance < light_distance
-            })
+        if let Some(blocker_intersect) = object.ray_intersect(&shadow_ray_origin, &shadow_direction)
+        {
+            if blocker_intersect.distance > 0.0 && blocker_intersect.distance < light_distance {
+                let mut alpha = 1.0;
+                if let Some(texture) = &blocker_intersect.material.texture {
+                    alpha = texture.get_alpha(blocker_intersect.u, blocker_intersect.v);
+                }
+                return alpha >= 0.5;
+            }
+        }
+        false
     })
 }
 
@@ -273,65 +271,120 @@ pub fn cast_ray(
         return environment_color(scene, ray_origin, ray_direction);
     };
 
+    let mut alpha = 1.0;
+    if let Some(texture) = &intersect.material.texture {
+        alpha = texture.get_alpha(intersect.u, intersect.v);
+    }
+    if alpha < 0.5 {
+        // Alpha cutout: continue the ray from just past the intersection
+        let new_origin = intersect.point + ray_direction * 1e-4;
+        return cast_ray(&new_origin, ray_direction, scene, depth, render_mode);
+    }
+
     let color = shade(&intersect, ray_origin, scene, render_mode);
 
     let reflectivity = intersect.material.reflectivity;
     let transparency = intersect.material.transparency;
 
-    if reflectivity <= 0.0 && transparency <= 0.0 {
-        return color;
-    }
+    let mut final_color = color;
 
-    let incident = normalize(ray_direction);
-    let mut normal = intersect.normal;
-    let entering = dot(&incident, &normal) < 0.0;
-    let (eta_i, eta_t) = if entering {
-        (1.0, intersect.material.refractive_index)
-    } else {
-        normal = -normal;
-        (intersect.material.refractive_index, 1.0)
-    };
-    let cos_theta = dot(&-incident, &normal).clamp(0.0, 1.0);
-    let eta = eta_i / eta_t;
-    let refracted_direction = refract_direction(&incident, &normal, eta);
+    if reflectivity > 0.0 || transparency > 0.0 {
+        let incident = normalize(ray_direction);
+        let mut normal = intersect.normal;
+        let entering = dot(&incident, &normal) < 0.0;
+        let (eta_i, eta_t) = if entering {
+            (1.0, intersect.material.refractive_index)
+        } else {
+            normal = -normal;
+            (intersect.material.refractive_index, 1.0)
+        };
 
-    let r0 = ((eta_i - eta_t) / (eta_i + eta_t)).powi(2);
-    let fresnel = if refracted_direction.is_some() {
-        r0 + (1.0 - r0) * (1.0 - cos_theta).powi(5)
-    } else {
-        1.0
-    };
-    let surface_weight = (1.0 - transparency) * (1.0 - reflectivity);
-    let reflection_weight = reflectivity + transparency * (1.0 - reflectivity) * fresnel;
-    let transmission_weight = transparency * (1.0 - reflectivity) * (1.0 - fresnel);
+        let f0 = ((eta_i - eta_t) / (eta_i + eta_t)).powi(2);
+        let cos_theta = -dot(&incident, &normal).max(0.0);
+        let fresnel = f0 + (1.0 - f0) * (1.0 - cos_theta).powi(5);
 
-    let mut result = color * surface_weight;
-    if reflection_weight > 0.0 {
-        let reflected_direction = reflect(&incident, &normal).normalize();
-        let reflected_origin = intersect.point + normal * REFLECTION_BIAS;
-        let reflected = cast_ray(
-            &reflected_origin,
-            &reflected_direction,
-            scene,
-            depth + 1,
-            render_mode,
-        );
-        result = result + reflected * reflection_weight;
-    }
-    if transmission_weight > 0.0 {
-        if let Some(refracted_direction) = refracted_direction {
-            let refracted_origin = intersect.point - normal * REFRACTION_BIAS;
-            let refracted = cast_ray(
-                &refracted_origin,
-                &refracted_direction,
+        let reflection_weight = if transparency > 0.0 {
+            fresnel
+        } else {
+            reflectivity
+        };
+        let transmission_weight = transparency * (1.0 - fresnel);
+
+        let reflected_direction = incident - normal * 2.0 * dot(&incident, &normal);
+        let eta = eta_i / eta_t;
+        let k = 1.0 - eta * eta * (1.0 - cos_theta * cos_theta);
+
+        let refracted_direction = if k > 0.0 {
+            Some(incident * eta + normal * (eta * cos_theta - k.sqrt()))
+        } else {
+            None
+        };
+
+        let mut result = color * (1.0 - reflection_weight - transmission_weight);
+
+        if reflection_weight > 0.0 {
+            let reflected_origin = intersect.point + normal * REFRACTION_BIAS;
+            let reflected = cast_ray(
+                &reflected_origin,
+                &reflected_direction,
                 scene,
                 depth + 1,
                 render_mode,
             );
-            result = result + refracted * transmission_weight;
+            result = result + reflected * reflection_weight;
+        }
+        if transmission_weight > 0.0 {
+            if let Some(refracted_direction) = refracted_direction {
+                let refracted_origin = intersect.point - normal * REFRACTION_BIAS;
+                let refracted = cast_ray(
+                    &refracted_origin,
+                    &refracted_direction,
+                    scene,
+                    depth + 1,
+                    render_mode,
+                );
+                result = result + refracted * transmission_weight;
+            }
+        }
+        final_color = result;
+    }
+
+    // --- FOG (Bruma AtmosfÃ©rica) ---
+    // Only apply fog on the primary ray (depth == 0) to avoid double fogging through glass
+    if depth == 0 {
+        let is_secret_room = scene.is_secret_room_object(ObjectId(intersect.object_index));
+
+        // Disable fog completely for the secret room as requested.
+        if !is_secret_room {
+            let dist = intersect.distance;
+            let wave = (intersect.point.x * 2.0 + scene.time).sin()
+                * (intersect.point.z * 1.5 - scene.time * 0.5).cos();
+
+            let base_density = match scene.day_phase {
+                DayPhase::Dawn => 0.005,
+                DayPhase::Day => 0.002,
+                DayPhase::Sunset => 0.008,
+                DayPhase::Night => 0.015,
+            };
+
+            let density = base_density + wave * 0.002;
+
+            let fog_height_factor = (1.0 - (intersect.point.y) / 3.0).clamp(0.0, 1.0);
+            let fog_factor = 1.0 - (-(density * fog_height_factor * dist)).exp();
+
+            let fog_color = match scene.day_phase {
+                DayPhase::Dawn => Color::new(200, 200, 210),
+                DayPhase::Day => Color::new(230, 240, 245),
+                DayPhase::Sunset => Color::new(250, 160, 110),
+                DayPhase::Night => Color::new(30, 40, 50),
+            };
+
+            let t = fog_factor.clamp(0.0, 0.7);
+            final_color = final_color * (1.0 - t) + fog_color * t;
         }
     }
-    result
+
+    final_color
 }
 
 fn environment_color(scene: &Scene, ray_origin: &Vec3, ray_direction: &Vec3) -> Color {
@@ -356,7 +409,9 @@ pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8, sca
             .enumerate()
             .for_each(|(y, row)| {
                 for (x, pixel) in row.iter_mut().enumerate() {
-                    let ray_direction = scene.camera.ray_for_pixel(x as f32, y as f32, width, height, FOV);
+                    let ray_direction = scene
+                        .camera
+                        .ray_for_pixel(x as f32, y as f32, width, height, FOV);
                     *pixel = cast_ray(&camera_eye, &ray_direction, scene, 0, render_mode).to_hex();
                 }
             });
@@ -364,23 +419,32 @@ pub fn render(framebuffer: &mut Framebuffer, scene: &Scene, render_mode: u8, sca
         let scaled_width = width / scale_factor as usize;
         let scaled_height = height / scale_factor as usize;
         let mut scaled_buffer = vec![0; scaled_width * scaled_height];
-        
-        scaled_buffer.par_chunks_mut(scaled_width).enumerate().for_each(|(sy, row)| {
-            for (sx, pixel) in row.iter_mut().enumerate() {
-                let x = sx * scale_factor as usize;
-                let y = sy * scale_factor as usize;
-                let ray_direction = scene.camera.ray_for_pixel(x as f32, y as f32, width, height, FOV);
-                *pixel = cast_ray(&camera_eye, &ray_direction, scene, 0, render_mode).to_hex();
-            }
-        });
 
-        framebuffer.buffer.par_chunks_mut(width).enumerate().for_each(|(y, row)| {
-            let sy = (y / scale_factor as usize).min(scaled_height - 1);
-            for (x, pixel) in row.iter_mut().enumerate() {
-                let sx = (x / scale_factor as usize).min(scaled_width - 1);
-                *pixel = scaled_buffer[sy * scaled_width + sx];
-            }
-        });
+        scaled_buffer
+            .par_chunks_mut(scaled_width)
+            .enumerate()
+            .for_each(|(sy, row)| {
+                for (sx, pixel) in row.iter_mut().enumerate() {
+                    let x = sx * scale_factor as usize;
+                    let y = sy * scale_factor as usize;
+                    let ray_direction = scene
+                        .camera
+                        .ray_for_pixel(x as f32, y as f32, width, height, FOV);
+                    *pixel = cast_ray(&camera_eye, &ray_direction, scene, 0, render_mode).to_hex();
+                }
+            });
+
+        framebuffer
+            .buffer
+            .par_chunks_mut(width)
+            .enumerate()
+            .for_each(|(y, row)| {
+                let sy = (y / scale_factor as usize).min(scaled_height - 1);
+                for (x, pixel) in row.iter_mut().enumerate() {
+                    let sx = (x / scale_factor as usize).min(scaled_width - 1);
+                    *pixel = scaled_buffer[sy * scaled_width + sx];
+                }
+            });
     }
 }
 
@@ -414,7 +478,7 @@ fn create_scene(camera: Camera) -> Scene {
         build_japanese_ruins(Vec3::zeros(), 1.0, &materials),
     );
 
-    // ================= CAFÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â° =================
+    // ================= CAFÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â° =================
     let cafe_pos = Vec3::new(0.5, 0.0, -1.0);
     append_asset(&mut objects, build_japanese_cafe(cafe_pos, 1.0, &materials));
     append_asset(
@@ -441,6 +505,11 @@ fn create_scene(camera: Camera) -> Scene {
         &mut objects,
         build_sakura_tree_variant(Vec3::new(3.5, 0.1, -1.2), 0.9, &materials, 1),
     );
+    // Extra sakura
+    append_asset(
+        &mut objects,
+        build_sakura_tree_variant(Vec3::new(2.0, 0.1, 2.4), 1.1, &materials, 2),
+    );
 
     // Bamboo Groups
     append_asset(
@@ -459,6 +528,16 @@ fn create_scene(camera: Camera) -> Scene {
         &mut objects,
         build_bamboo_cluster(Vec3::new(2.5, 0.1, -2.8), 1.0, &materials),
     ); // Back Right
+    // Extra bamboo
+    append_asset(
+        &mut objects,
+        build_bamboo_cluster(Vec3::new(-1.0, 0.1, 2.4), 1.0, &materials),
+    );
+
+    append_asset(
+        &mut objects,
+        build_more_garden_flowers(Vec3::new(0.0, 0.0, 0.0), 1.0, &materials),
+    );
 
     // ================= LANTERNS & DETAILS =================
     let mut toro_materials = materials.stone.clone();
@@ -483,19 +562,7 @@ fn create_scene(camera: Camera) -> Scene {
         build_rock_garden(Vec3::new(3.5, 0.1, -0.5), 0.5, &materials),
     );
 
-    // Small bushes simulating flowers (scaled down sakura)
-    append_asset(
-        &mut objects,
-        build_sakura_tree_variant(Vec3::new(-1.8, 0.1, 2.5), 0.35, &materials, 2),
-    );
-    append_asset(
-        &mut objects,
-        build_sakura_tree_variant(Vec3::new(2.8, 0.1, 1.5), 0.4, &materials, 0),
-    );
-    append_asset(
-        &mut objects,
-        build_sakura_tree_variant(Vec3::new(-0.8, 0.1, -2.6), 0.35, &materials, 1),
-    );
+    // Bushes removed as requested, using real flowers instead (build_more_garden_flowers handles this)
 
     // ================= LIGHTS =================
     let mut lights = Vec::new();
@@ -618,17 +685,63 @@ fn create_scene(camera: Camera) -> Scene {
         scene.register_door_part(id);
     }
 
-    let room_ids = append_asset(
-        &mut scene.objects,
-        build_secret_room_interior(Vec3::new(2.5, -2.0, -2.5), 1.0, &materials),
-    );
+    let (room_base, room_fpp) = build_secret_room_interior(Vec3::new(2.5, -2.0, -2.5), 1.0, &materials);
+    let room_ids = append_asset(&mut scene.objects, room_base);
     for id in room_ids {
         scene.register_secret_room_object(id);
     }
-    scene.secret_room_light = Some(scene.lights.len());
+    let room_fpp_ids = append_asset(&mut scene.objects, room_fpp);
+    for id in room_fpp_ids {
+        scene.secret_room_fpp_walls.push(crate::core::interaction::ObjectId(id));
+        scene.register_secret_room_object(id); // Treat as secret room object to hide when closed
+    }
+    // 4 Lamps
+    for (x, z) in [
+        (-1.6, 1.4),  // Back left
+        (1.6, 1.4),   // Back right
+        (-1.6, -1.5), // Front left
+        (1.6, -1.5),  // Front right
+    ] {
+        scene.secret_room_lights.push(scene.lights.len());
+        scene.lights.push(Light::new(
+            Vec3::new(2.5 + x, -1.4, -2.5 + z), // Lamps near the ceiling or floor? Let's put them high
+            Color::new(255, 180, 92), // Warm Amber
+            0.0,
+        ));
+    }
+
+    // ================= CAFÃ‰ INTERIOR =================
+    let (cafe_base, cafe_fpp) = build_cafe_interior(cafe_pos, 1.0, &materials);
+    let cafe_interior_ids = append_asset(&mut scene.objects, cafe_base);
+    let cafe_fpp_ids = append_asset(&mut scene.objects, cafe_fpp);
+    for id in cafe_fpp_ids {
+        scene.cafe_fpp_walls.push(crate::core::interaction::ObjectId(id));
+        scene.hide_object(crate::core::interaction::ObjectId(id));
+    }
+    // The last object in the interior is the exit mat â€” register it as CafeEntrance
+    if let Some(&exit_mat_id) = cafe_interior_ids.last() {
+        scene.register_interactive(exit_mat_id, InteractiveKind::CafeEntrance, true);
+    }
+
+    // Entrance mat (welcome mat) on the front step â€” clickable to enter
+    let entrance_mat_id = add_primitive(
+        &mut scene.objects,
+        Box::new(Cube),
+        Vec3::new(0.5, 0.22, -0.15),
+        Vec3::zeros(),
+        Vec3::new(0.8, 0.02, 0.4),
+        {
+            let mut mat = materials.wood.clone();
+            mat.diffuse = Color::new(180, 155, 120);
+            mat
+        },
+    );
+    scene.register_interactive(entrance_mat_id, InteractiveKind::CafeEntrance, true);
+
+    // Interior cafÃ© light (warm lantern)
     scene.lights.push(Light::new(
-        Vec3::new(2.2, -0.35, -3.0),
-        Color::new(255, 211, 150),
+        Vec3::new(0.5, 0.95, -0.9),
+        Color::new(255, 200, 130),
         0.0,
     ));
 
@@ -641,8 +754,19 @@ fn create_scene(camera: Camera) -> Scene {
 
 fn secret_room_camera() -> Camera {
     Camera::new(
-        Vec3::new(2.5, -1.0, -6.5), // Look from further back into the room
-        Vec3::new(2.5, -1.8, -2.5), // Look directly at the room center
+        Vec3::new(2.5, -0.6, -7.5), // Look from further back into the room
+        Vec3::new(2.5, -1.6, -2.5), // Look directly at the room center
+        Vec3::y(),
+    )
+}
+
+fn secret_room_fpp_camera() -> Camera {
+    // Center of the room is X=2.5, Z=-2.5
+    // Z range of room is -4.3 to -0.7
+    // Let's place the camera near the front wall looking towards the back (the table and emblem)
+    Camera::new(
+        Vec3::new(2.5, -1.3, -3.8), // Standing near the front door, looking at the Yakuza emblem
+        Vec3::new(2.5, -1.5, -0.7), // Looking at the table/back wall
         Vec3::y(),
     )
 }
@@ -651,6 +775,17 @@ fn cafe_camera() -> Camera {
     Camera::new(
         Vec3::new(-3.5, 1.2, 3.5),
         Vec3::new(0.0, 0.6, 0.0),
+        Vec3::y(),
+    )
+}
+
+fn cafe_interior_camera() -> Camera {
+    // Eye inside the cafÃ© near the front door, looking toward the counter.
+    // cafÃ©_pos = (0.5, 0, -1.0), floor Yâ‰ˆ0.22, ceiling Yâ‰ˆ1.31
+    // Eye at Y=0.85 (standing height), near front Zâ‰ˆ-0.3 (just inside)
+    Camera::new(
+        Vec3::new(0.5, 0.85, -0.35), // Inside, near front door
+        Vec3::new(0.5, 0.60, -1.20), // Looking toward back wall / counter
         Vec3::y(),
     )
 }
@@ -818,6 +953,93 @@ fn save_test_render(framebuffer: &Framebuffer, path: &str) -> Result<(), image::
     )
 }
 
+pub struct Particle {
+    pub pos: Vec3,
+    pub vel: Vec3,
+    pub life: f32,
+    pub max_life: f32,
+    pub color: Color,
+    pub size: f32,
+    pub seed: f32,
+}
+
+fn draw_particles(
+    buffer: &mut [u32],
+    width: usize,
+    height: usize,
+    particles: &[Particle],
+    camera: &Camera,
+    scene: &Scene,
+) {
+    let aspect = width as f32 / height as f32;
+    let fov_factor = (FOV / 2.0).tan();
+    let forward = (camera.center - camera.eye).normalize();
+    let right = forward.cross(&camera.up).normalize();
+    let up = right.cross(&forward).normalize();
+
+    for p in particles {
+        let dir = p.pos - camera.eye;
+        let dist = dot(&dir, &forward);
+        if dist < 0.2 {
+            continue;
+        } // Too close or behind camera
+
+        // Fast occlusion check with bounding ray
+        let is_occluded = {
+            let mut occluded = false;
+            let dir_norm = dir.normalize();
+            for (idx, obj) in scene.objects.iter().enumerate() {
+                if !scene.is_object_visible(ObjectId(idx)) {
+                    continue;
+                }
+                if let Some(hit) = obj.ray_intersect(&camera.eye, &dir_norm) {
+                    // Check if it's opaque and closer than the particle
+                    if hit.distance < dir.magnitude() - 0.1 && hit.material.transparency < 0.5 {
+                        occluded = true;
+                        break;
+                    }
+                }
+            }
+            occluded
+        };
+
+        if is_occluded {
+            continue;
+        }
+
+        let x = dot(&dir, &right) / dist;
+        let y = dot(&dir, &up) / dist;
+
+        let screen_x = ((x / (fov_factor * aspect) + 1.0) * 0.5 * width as f32) as i32;
+        let screen_y = ((1.0 - (y / fov_factor + 1.0) * 0.5) * height as f32) as i32;
+
+        let r = (p.size / dist * height as f32 * 0.1) as i32;
+        if r < 1 {
+            continue;
+        }
+
+        for dy in -r..=r {
+            for dx in -r..=r {
+                let d2 = dx * dx + dy * dy;
+                if d2 > r * r {
+                    continue;
+                }
+
+                let px = screen_x + dx;
+                let py = screen_y + dy;
+                if px >= 0 && py >= 0 && px < width as i32 && py < height as i32 {
+                    let intensity =
+                        (1.0 - (d2 as f32).sqrt() / r as f32) * (p.life / p.max_life).min(1.0);
+                    let idx = (py as usize) * width + (px as usize);
+                    let old = Color::from_hex(buffer[idx]);
+                    let t = intensity.clamp(0.0, 1.0) * 0.8;
+                    buffer[idx] = (old * (1.0 - t) + p.color * t).to_hex();
+                }
+            }
+        }
+    }
+}
+
 fn main() {
     let test_mode = std::env::args().nth(1);
     let requested_day = test_mode
@@ -932,13 +1154,8 @@ fn main() {
 
     let frame_delay = Duration::from_millis(16);
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-    let mut window = Window::new(
-        "La Puerta Trasera",
-        WIDTH,
-        HEIGHT,
-        WindowOptions::default(),
-    )
-    .unwrap();
+    let mut window =
+        Window::new("La Puerta Trasera", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
     let mut scene = create_scene(create_camera());
 
     let mut camera_moved = true;
@@ -956,16 +1173,28 @@ fn main() {
         let day = scene.day_count;
         let phase = match scene.day_phase {
             DayPhase::Dawn => "Amanecer",
-            DayPhase::Day => "Día",
+            DayPhase::Day => "DÃ­a",
             DayPhase::Sunset => "Atardecer",
             DayPhase::Night => "Noche",
         };
         let clues = scene.game_state.clues_count();
         let clue_str = format!(" | PISTAS {}/3", clues);
-        format!("La Puerta Trasera - DÍA {} ({}){}", day, phase, clue_str)
+        let location = if scene.game_state.secret_room_open {
+            " | SOTANO SECRETO"
+        } else if scene.game_state.inside_cafe {
+            " | INTERIOR DEL CAFE"
+        } else {
+            ""
+        };
+        format!(
+            "La Puerta Trasera - DIA {} ({}){}{}",
+            day, phase, clue_str, location
+        )
     };
 
     window.set_title(&get_title(&scene));
+
+    let menu_img = image::open("assets/ui/main_menu.png").ok();
 
     let mut app_mode = AppMode::MainMenu;
     let mut menu_selection = 0;
@@ -975,7 +1204,76 @@ fn main() {
     render(&mut framebuffer, &scene, 0, 1);
     let menu_background = framebuffer.buffer.clone();
 
+    let mut last_frame_time = Instant::now();
+
+    let mut particles: Vec<Particle> = Vec::new();
+
     while window.is_open() {
+        let now = Instant::now();
+        let delta_time = now.duration_since(last_frame_time).as_secs_f32().min(0.1);
+        last_frame_time = now;
+        scene.time += delta_time;
+
+        // -- ACTUALIZACIÃ“N DE PARTÃCULAS --
+        let is_night = scene.day_phase == DayPhase::Night || scene.day_phase == DayPhase::Sunset;
+        let max_particles = if scene.game_state.secret_room_open {
+            0 // No particles inside the secret room
+        } else if is_night {
+            25
+        } else {
+            10
+        };
+
+        for p in &mut particles {
+            p.life -= delta_time;
+            p.pos += p.vel * delta_time;
+            p.pos.y += (scene.time * 1.5 + p.seed).sin() * 0.1 * delta_time;
+            p.pos.x += (scene.time * 0.8 + p.seed * 2.0).cos() * 0.05 * delta_time;
+        }
+        particles.retain(|p| p.life > 0.0);
+
+        while particles.len() < max_particles {
+            let seed = scene.time + particles.len() as f32;
+            let (px, py, pz) = if scene.game_state.secret_room_open {
+                // Spawn ONLY in secret room
+                (
+                    2.5 + (seed * 13.0).sin() * 1.8,
+                    -1.6 + (seed * 7.0).cos() * 0.4,
+                    -2.5 + (seed * 11.0).sin() * 1.5,
+                )
+            } else if scene.game_state.inside_cafe {
+                // Spawn ONLY inside the cafe
+                (
+                    0.5 + (seed * 13.0).sin() * 1.2,
+                    0.8 + (seed * 7.0).cos() * 0.4,
+                    -1.0 + (seed * 11.0).sin() * 0.8,
+                )
+            } else {
+                // Spawn in garden
+                (
+                    (seed * 17.0).cos() * 3.0,
+                    0.2 + (seed * 5.0).sin() * 0.5,
+                    -1.0 + (seed * 19.0).cos() * 2.0,
+                )
+            };
+
+            let color = if is_night {
+                Color::new(255, 220, 150)
+            } else {
+                Color::new(255, 255, 255)
+            };
+
+            particles.push(Particle {
+                pos: Vec3::new(px, py, pz),
+                vel: Vec3::new(0.0, 0.05, 0.0),
+                life: 3.0 + (seed * 3.0).sin().abs() * 3.0,
+                max_life: 6.0,
+                color,
+                size: 0.15 + (seed * 7.0).cos().abs() * 0.1,
+                seed,
+            });
+        }
+
         let mut temporal_change = false;
 
         if window.is_key_pressed(Key::Escape, minifb::KeyRepeat::No) {
@@ -983,6 +1281,8 @@ fn main() {
                 AppMode::MainMenu => break,
                 AppMode::Exploration => {
                     app_mode = AppMode::MainMenu;
+                    scene.game_state.inside_cafe = false;
+                    particles.clear();
                     camera_moved = true;
                 }
                 AppMode::Cinematic => {
@@ -996,16 +1296,23 @@ fn main() {
                     }
                     app_mode = AppMode::MainMenu;
                     cinematic_state = None;
+                    particles.clear();
                     camera_moved = true;
                 }
             }
         }
 
         if app_mode == AppMode::MainMenu {
-            if window.is_key_pressed(Key::Up, minifb::KeyRepeat::No) {
+            if window.is_key_pressed(Key::Up, minifb::KeyRepeat::No)
+                || window.is_key_pressed(Key::Key1, minifb::KeyRepeat::No)
+                || window.is_key_pressed(Key::NumPad1, minifb::KeyRepeat::No)
+            {
                 menu_selection = 0;
             }
-            if window.is_key_pressed(Key::Down, minifb::KeyRepeat::No) {
+            if window.is_key_pressed(Key::Down, minifb::KeyRepeat::No)
+                || window.is_key_pressed(Key::Key2, minifb::KeyRepeat::No)
+                || window.is_key_pressed(Key::NumPad2, minifb::KeyRepeat::No)
+            {
                 menu_selection = 1;
             }
             if window.is_key_pressed(Key::Enter, minifb::KeyRepeat::No) {
@@ -1034,27 +1341,53 @@ fn main() {
             // Restore pristine background to erase previous menu frames
             framebuffer.buffer.copy_from_slice(&menu_background);
             // Draw menu overlay over whatever is in the framebuffer
-            crate::core::hud::text(&mut framebuffer, "LA PUERTA TRASERA", 160, 100, 5);
-            crate::core::hud::text(&mut framebuffer, "Siete Dias de Secretos", 160, 150, 2);
-
-            let color1 = if menu_selection == 0 {
-                ">> 1. EXPLORAR EL MUNDO"
+            if let Some(ref img) = menu_img {
+                crate::core::hud::draw_image(&mut framebuffer, img, 0, 0);
+                let cursor_y = if menu_selection == 0 { 290 } else { 390 };
+                crate::core::hud::text(&mut framebuffer, ">>", 100, cursor_y, 3);
+                crate::core::hud::text(
+                    &mut framebuffer,
+                    "ENTER CONFIRMAR   ESC SALIR",
+                    200,
+                    500,
+                    1,
+                );
             } else {
-                "   1. EXPLORAR EL MUNDO"
-            };
-            let color2 = if menu_selection == 1 {
-                ">> 2. VIVIR LOS 7 DIAS "
-            } else {
-                "   2. VIVIR LOS 7 DIAS "
-            };
+                crate::core::hud::text(&mut framebuffer, "LA PUERTA TRASERA", 160, 100, 5);
+                crate::core::hud::text(
+                    &mut framebuffer,
+                    "ç§˜å¯†ã®ä¸ƒæ—¥é–“ (Siete Dias de Secretos)",
+                    160,
+                    150,
+                    2,
+                );
 
-            crate::core::hud::text(&mut framebuffer, color1, 200, 300, 2);
-            crate::core::hud::text(&mut framebuffer, color2, 200, 350, 2);
-            crate::core::hud::text(&mut framebuffer, "ENTER CONFIRMAR   ESC SALIR", 200, 500, 1);
+                let color1 = if menu_selection == 0 {
+                    ">> 1. EXPLORAR EL MUNDO"
+                } else {
+                    "   1. EXPLORAR EL MUNDO"
+                };
+                let color2 = if menu_selection == 1 {
+                    ">> 2. VIVIR LOS 7 DIAS "
+                } else {
+                    "   2. VIVIR LOS 7 DIAS "
+                };
+
+                crate::core::hud::text(&mut framebuffer, color1, 200, 300, 2);
+                crate::core::hud::text(&mut framebuffer, color2, 200, 350, 2);
+                crate::core::hud::text(
+                    &mut framebuffer,
+                    "ENTER CONFIRMAR   ESC SALIR",
+                    200,
+                    500,
+                    1,
+                );
+            }
 
             window
                 .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)
                 .unwrap();
+            std::thread::sleep(frame_delay);
             continue;
         }
 
@@ -1070,9 +1403,9 @@ fn main() {
                 // Act 6 (50s): Day 6 Night, lantern
                 // Act 7 (60s): Day 7 Night, trapdoor opens
 
-                let mut target_day = 1;
-                let mut target_phase = DayPhase::Dawn;
-                let mut c_eye = Vec3::new(-3.5, 1.2, 4.0);
+                let target_day;
+                let target_phase;
+                let c_eye;
                 let mut c_center = Vec3::new(0.0, 0.5, 0.0);
                 let mut open_door = false;
 
@@ -1133,6 +1466,7 @@ fn main() {
                         toggle_secret_room_shortcut(&mut scene);
                     }
                     cinematic_state = None;
+                    particles.clear();
                     camera_moved = true;
                     continue;
                 }
@@ -1224,23 +1558,82 @@ fn main() {
 
             if window.is_key_pressed(Key::F12, minifb::KeyRepeat::No) {
                 if toggle_secret_room_shortcut(&mut scene) {
-                    scene.camera = if scene.game_state.secret_room_open {
-                        secret_room_camera()
+                    scene.game_state.inside_cafe = false;
+                    particles.clear();
+                    
+                    if scene.game_state.secret_room_open {
+                        scene.game_state.inside_secret_room_fpp = true;
+                        for id in scene.secret_room_fpp_walls.clone() {
+                            scene.show_object(id);
+                        }
+                        scene.camera = secret_room_fpp_camera();
                     } else {
-                        create_camera()
-                    };
+                        scene.game_state.inside_secret_room_fpp = false;
+                        for id in scene.secret_room_fpp_walls.clone() {
+                            scene.hide_object(id);
+                        }
+                        scene.camera = create_camera();
+                    }
+                    
                     temporal_change = true;
                     camera_moved = true;
                     window.set_title(&get_title(&scene));
                     println!(
-                        "Acceso directo F12: habitación {} abierta.",
+                        "Acceso directo F12: habitación secreta {}.",
                         if scene.game_state.secret_room_open {
-                            "abierta"
+                            "abierta (en Primera Persona)"
                         } else {
                             "cerrada"
                         }
                     );
                 }
+            }
+
+            if window.is_key_pressed(Key::T, minifb::KeyRepeat::No) {
+                if scene.game_state.secret_room_open {
+                    scene.game_state.inside_secret_room_fpp = !scene.game_state.inside_secret_room_fpp;
+                    
+                    if scene.game_state.inside_secret_room_fpp {
+                        for id in scene.secret_room_fpp_walls.clone() {
+                            scene.show_object(id);
+                        }
+                    } else {
+                        for id in scene.secret_room_fpp_walls.clone() {
+                            scene.hide_object(id);
+                        }
+                    }
+                    
+                    scene.camera = if scene.game_state.inside_secret_room_fpp {
+                        secret_room_fpp_camera()
+                    } else {
+                        secret_room_camera()
+                    };
+                    particles.clear();
+                    temporal_change = true;
+                    camera_moved = true;
+                    window.set_title(&get_title(&scene));
+                }
+            }
+
+            if window.is_key_pressed(Key::C, minifb::KeyRepeat::No) {
+                scene.toggle_cafe_interior();
+                scene.camera = if scene.game_state.inside_cafe {
+                    cafe_interior_camera()
+                } else {
+                    create_camera()
+                };
+                particles.clear();
+                temporal_change = true;
+                camera_moved = true;
+                window.set_title(&get_title(&scene));
+                println!(
+                    "CafÃ© {}",
+                    if scene.game_state.inside_cafe {
+                        "entrando"
+                    } else {
+                        "saliendo"
+                    }
+                );
             }
 
             let orbit = [
@@ -1288,6 +1681,8 @@ fn main() {
                                 }
                                 InteractiveKind::BackDoor => {
                                     if scene.toggle_secret_room() {
+                                        scene.game_state.inside_cafe = false;
+                                        particles.clear();
                                         scene.camera = if scene.game_state.secret_room_open {
                                             secret_room_camera()
                                         } else {
@@ -1310,7 +1705,25 @@ fn main() {
                                         );
                                     }
                                 }
-                                _ => {}
+                                InteractiveKind::CafeEntrance => {
+                                    scene.toggle_cafe_interior();
+                                    scene.camera = if scene.game_state.inside_cafe {
+                                        cafe_interior_camera()
+                                    } else {
+                                        create_camera()
+                                    };
+                                    camera_moved = true;
+                                    window.set_title(&get_title(&scene));
+                                    println!(
+                                        "CafÃ© {}",
+                                        if scene.game_state.inside_cafe {
+                                            "entrando"
+                                        } else {
+                                            "saliendo"
+                                        }
+                                    );
+                                }
+                                InteractiveKind::Movable => {}
                             }
                         }
                     }
@@ -1334,7 +1747,8 @@ fn main() {
             } else {
                 last_mouse_position = None;
             }
-            was_moving = (mouse_down && pointer.dragging) || orbit.iter().any(|(k, _, _)| window.is_key_down(*k));
+            was_moving = (mouse_down && pointer.dragging)
+                || orbit.iter().any(|(k, _, _)| window.is_key_down(*k));
 
             if let Some((_, scroll_delta)) = window.get_scroll_wheel() {
                 if scroll_delta != 0.0 {
@@ -1347,9 +1761,16 @@ fn main() {
         let is_moving = was_moving;
         if camera_moved {
             let previous = temporal_change.then(|| display.clone());
-            render(&mut framebuffer, &scene, render_mode, if is_moving { 4 } else { 1 });
+            render(
+                &mut framebuffer,
+                &scene,
+                render_mode,
+                if is_moving { 4 } else { 1 },
+            );
             crate::core::hud::draw(&mut framebuffer, &scene);
-            if !is_moving { camera_moved = false; }
+            if !is_moving {
+                camera_moved = false;
+            }
             fade = previous.map(|pixels| (pixels, Instant::now()));
         }
 
@@ -1372,6 +1793,16 @@ fn main() {
             }
         } else {
             display.copy_from_slice(&framebuffer.buffer);
+        }
+        if app_mode != AppMode::MainMenu {
+            draw_particles(
+                &mut display,
+                WIDTH,
+                HEIGHT,
+                &particles,
+                &scene.camera,
+                &scene,
+            );
         }
         window.update_with_buffer(&display, WIDTH, HEIGHT).unwrap();
         std::thread::sleep(frame_delay);
@@ -1639,7 +2070,7 @@ mod story_tests {
         assert!(scene.game_state.secret_room_open);
         assert!(!scene.is_object_visible(ObjectId(0)));
         assert!(scene.is_object_visible(door));
-        assert!(scene.lights[scene.secret_room_light.unwrap()].intensity > 0.0);
+        assert!(scene.lights[scene.secret_room_lights[0]].intensity > 0.0);
         assert!(scene.toggle_secret_room());
         scene.skybox = crate::core::scene::Skybox::new(Color::new(0, 0, 0));
         scene.set_story_day(7);
@@ -1684,3 +2115,4 @@ mod story_tests {
         assert!(scene.is_object_visible(door));
     }
 }
+

@@ -75,12 +75,23 @@ impl AssetMaterials {
             terracotta: Material::new(Color::new(50, 50, 60)) // Dark roof tiles
                 .with_albedo(0.8)
                 .with_specular(12.0, 0.1),
-            foliage: Material::new(Color::new(44, 112, 54))
-                .with_albedo(0.92)
-                .with_specular(12.0, 0.04),
+            foliage: with_optional_maps(
+                Material::new(Color::new(44, 112, 54))
+                    .with_albedo(0.92)
+                    .with_specular(12.0, 0.04)
+                    .with_texture(Arc::new(Texture::load_or_procedural(
+                        "assets/objetos_textura/sakura_foliage.png",
+                        ProceduralTexture::Grass,
+                    ))),
+                "foliage",
+            ),
             blossom: Material::new(Color::new(245, 175, 205))
                 .with_albedo(0.88)
-                .with_specular(28.0, 0.16),
+                .with_specular(28.0, 0.16)
+                .with_texture(Arc::new(Texture::load_or_procedural(
+                    "assets/objetos_textura/sakura_foliage.png",
+                    ProceduralTexture::Grass,
+                ))),
             warm_glow: Material::new(Color::new(255, 202, 112))
                 .with_albedo(0.35)
                 .with_specular(64.0, 0.5)
@@ -455,21 +466,33 @@ pub fn build_japanese_cafe(position: Vec3, scale: f32, materials: &AssetMaterial
         );
     }
 
-    // Shoji side bays and a divided glass window give the side elevation depth.
-    for z in [-0.34, 0.38] {
+    // Left shoji side wall
+    for z in [-0.52, 0.0, 0.52] {
         append_primitive(
             &mut objects,
             Box::new(Cube),
-            scaled_position(position, Vec3::new(-1.45, 0.76, z), scale),
+            scaled_position(position, Vec3::new(-1.45, wall_center_y, z), scale),
             Vec3::zeros(),
-            scaled_size(Vec3::new(0.045, 0.82, 0.48), scale),
+            scaled_size(Vec3::new(0.045, wall_height, 0.52), scale),
             &materials.shoji,
         );
     }
+    
+    // Right shoji side wall (solid background for the window to sit in, or we just put a full wall and push window out)
+    // Actually, to make it simple and fix gaps, let's put a full shoji wall on the right side and push the window out slightly.
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(1.45, 0.91, 0.30), scale),
+        scaled_position(position, Vec3::new(1.45, wall_center_y, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.045, wall_height, 1.56), scale),
+        &materials.shoji,
+    );
+
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(1.47, 0.91, 0.30), scale),
         Vec3::zeros(),
         scaled_size(Vec3::new(0.045, 0.52, 0.66), scale),
         &materials.glass,
@@ -478,7 +501,7 @@ pub fn build_japanese_cafe(position: Vec3, scale: f32, materials: &AssetMaterial
         append_primitive(
             &mut objects,
             Box::new(Cube),
-            scaled_position(position, Vec3::new(1.49, 0.91, z), scale),
+            scaled_position(position, Vec3::new(1.51, 0.91, z), scale),
             Vec3::zeros(),
             scaled_size(Vec3::new(0.035, 0.52, 0.025), scale),
             &materials.wood,
@@ -487,15 +510,15 @@ pub fn build_japanese_cafe(position: Vec3, scale: f32, materials: &AssetMaterial
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(1.49, 0.91, 0.30), scale),
+        scaled_position(position, Vec3::new(1.51, 0.91, 0.30), scale),
         Vec3::zeros(),
         scaled_size(Vec3::new(0.035, 0.025, 0.66), scale),
         &materials.wood,
     );
 
     // Two paper shoji panels with narrow wooden lattice bars.
-    for panel_center_x in [0.93] {
-        // Left panel open for interior view
+    for panel_center_x in [-0.93, 0.93] {
+        // Left panel previously open for interior view
         append_primitive(
             &mut objects,
             Box::new(Cube),
@@ -750,27 +773,27 @@ pub fn build_sakura_tree_variant(
 
     let branches = [
         (
-            Vec3::new(-0.28, 1.28, 0.0),
+            Vec3::new(-0.10, 1.28, 0.0),
             Vec3::new(-0.42, 0.58, 0.12),
             0.045,
         ),
         (
-            Vec3::new(0.28, 1.40, 0.02),
+            Vec3::new(0.10, 1.40, 0.0),
             Vec3::new(0.45, 0.62, -0.08),
             0.042,
         ),
         (
-            Vec3::new(-0.18, 1.63, 0.0),
+            Vec3::new(0.0, 1.63, 0.0),
             Vec3::new(-0.34, 0.52, -0.18),
             0.035,
         ),
         (
-            Vec3::new(0.20, 1.78, 0.0),
+            Vec3::new(0.0, 1.78, 0.0),
             Vec3::new(0.32, 0.48, 0.20),
             0.032,
         ),
         (
-            Vec3::new(0.0, 1.52, 0.0),
+            Vec3::new(0.05, 1.52, 0.0),
             Vec3::new(0.02, 0.56, -0.28),
             0.034,
         ),
@@ -781,7 +804,7 @@ pub fn build_sakura_tree_variant(
             Box::new(Cylinder),
             scaled_position(position, offset, scale),
             rotation,
-            scaled_size(Vec3::new(thickness, 0.72, thickness), scale),
+            scaled_size(Vec3::new(thickness, 1.0, thickness), scale),
             &materials.dark_wood,
         );
     }
@@ -837,6 +860,11 @@ pub fn build_bamboo_cluster(position: Vec3, scale: f32, materials: &AssetMateria
         (Vec3::new(-0.15, 0.0, 0.2), 1.1, 0.08),
         (Vec3::new(0.1, 0.0, -0.2), 1.5, -0.02),
         (Vec3::new(-0.25, 0.0, -0.1), 1.0, 0.0),
+        (Vec3::new(0.25, 0.0, -0.05), 1.3, -0.04),
+        (Vec3::new(-0.05, 0.0, -0.25), 1.6, 0.03),
+        (Vec3::new(-0.2, 0.0, 0.1), 1.25, 0.06),
+        (Vec3::new(0.15, 0.0, 0.25), 1.45, -0.07),
+        (Vec3::new(0.0, 0.0, 0.2), 1.15, 0.02),
     ];
 
     for (offset, height, tilt) in stalks {
@@ -854,6 +882,10 @@ pub fn build_bamboo_cluster(position: Vec3, scale: f32, materials: &AssetMateria
         (Vec3::new(0.0, 0.0, 0.0), 1.0, -1.0),
         (Vec3::new(0.2, 0.0, 0.15), 1.18, 1.0),
         (Vec3::new(-0.15, 0.0, 0.2), 0.88, -1.0),
+        (Vec3::new(0.1, 0.0, -0.2), 1.2, 1.0),
+        (Vec3::new(-0.25, 0.0, -0.1), 0.8, -1.0),
+        (Vec3::new(0.25, 0.0, -0.05), 1.05, 1.0),
+        (Vec3::new(-0.05, 0.0, -0.25), 1.35, -1.0),
     ] {
         append_primitive(
             &mut objects,
@@ -1161,13 +1193,19 @@ pub fn build_secret_room_interior(
     position: Vec3,
     scale: f32,
     materials: &AssetMaterials,
-) -> Vec<Object> {
+) -> (Vec<Object>, Vec<Object>) {
     let mut objects = Vec::new();
+    let mut fpp_walls = Vec::new();
 
-    // -- MATERIALS --
     let mut wall = materials.stone.clone();
     wall.texture = Some(Arc::new(Texture::load_or_procedural(
-        "assets/paredes/pared_sÃƒÂ³tano.png",
+        "assets/paredes/pared_sÃ³tano.png",
+        ProceduralTexture::Stone,
+    )));
+
+    let mut floor_mat = materials.stone.clone();
+    floor_mat.texture = Some(Arc::new(Texture::load_or_procedural(
+        "assets/suelo/mitch-harris-cPZ21gvclO8-unsplash.jpg",
         ProceduralTexture::Stone,
     )));
 
@@ -1188,25 +1226,20 @@ pub fn build_secret_room_interior(
     ceramic.diffuse = Color::new(220, 220, 210);
     ceramic.texture = None;
 
-    let mut glass = materials.glass.clone();
-    glass.texture = None;
-
     let mut mirror = materials.metal.clone().with_reflectivity(0.94);
     mirror.texture = None;
 
-    let _glow = materials.warm_glow.clone().with_transparency(0.0, 1.0);
-    let paper_glow = materials
-        .paper
-        .clone()
-        .with_emission(Color::new(255, 220, 180), 1.0);
+    let paper_glow = materials.paper.clone().with_emission(Color::new(255, 220, 180), 1.0);
 
-    // -- ARCHITECTURE --
-    // Walls
+    let mut steel = materials.metal.clone();
+    steel.diffuse = Color::new(180, 180, 180);
+    steel.reflectivity = 0.8;
+
+    // Base Walls
+    // Left and Right walls (solid)
     for (offset, size) in [
-        (Vec3::new(-1.06, 0.52, 0.0), Vec3::new(0.08, 1.0, 1.8)), // Left
-        (Vec3::new(1.06, 0.52, 0.0), Vec3::new(0.08, 1.0, 1.8)),  // Right
-        (Vec3::new(0.0, 0.52, 0.86), Vec3::new(2.2, 1.0, 0.08)),  // Back
-                                                                  // Front removed (hidden behind camera mostly)
+        (Vec3::new(-2.12, 0.52, 0.0), Vec3::new(0.08, 1.0, 3.6)),
+        (Vec3::new(2.12, 0.52, 0.0), Vec3::new(0.08, 1.0, 3.6)),
     ] {
         append_primitive(
             &mut objects,
@@ -1217,17 +1250,42 @@ pub fn build_secret_room_interior(
             &wall,
         );
     }
+    // Back wall (FPP Only, open in third person so camera can see inside)
+    append_primitive(
+        &mut fpp_walls,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 0.52, 1.76), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(4.4, 1.0, 0.08), scale),
+        &wall,
+    );
+    // Front Wall (FPP Only)
+    append_primitive(
+        &mut fpp_walls,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 0.52, -1.76), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(4.4, 1.0, 0.08), scale),
+        &wall,
+    );
 
-    // Floor Base
+    append_primitive(
+        &mut fpp_walls,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 1.02, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(4.4, 0.1, 3.6), scale),
+        &wood,
+    );
     append_primitive(
         &mut objects,
         Box::new(Cube),
         scaled_position(position, Vec3::new(0.0, 0.05, 0.0), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(2.2, 0.1, 1.8), scale),
-        &dark_wood,
+        scaled_size(Vec3::new(4.4, 0.1, 3.6), scale),
+        &floor_mat,
     );
-    // Tatami Center
+
     append_primitive(
         &mut objects,
         Box::new(Cube),
@@ -1236,39 +1294,11 @@ pub fn build_secret_room_interior(
         scaled_size(Vec3::new(1.4, 0.06, 1.2), scale),
         &tatami,
     );
-    // Stair step (Entrance)
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, 0.15, -0.7), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.8, 0.1, 0.3), scale),
-        &wood,
-    );
 
-    // -- CEILING LAMP (Justifies the PointLight at Y=1.0) --
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, 0.85, 0.0), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.3, 0.1, 0.3), scale),
-        &wood,
-    );
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, 0.80, 0.0), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.26, 0.1, 0.26), scale),
-        &paper_glow,
-    );
-
-    // -- YAKUZA EMBLEM (Back Wall) --
     append_primitive(
         &mut objects,
         Box::new(Cylinder),
-        scaled_position(position, Vec3::new(0.0, 0.65, 0.81), scale),
+        scaled_position(position, Vec3::new(0.0, 0.65, 1.71), scale),
         Vec3::new(1.57, 0.0, 0.0),
         scaled_size(Vec3::new(0.25, 0.04, 0.25), scale),
         &gold,
@@ -1276,13 +1306,12 @@ pub fn build_secret_room_interior(
     append_primitive(
         &mut objects,
         Box::new(Cylinder),
-        scaled_position(position, Vec3::new(0.0, 0.65, 0.80), scale),
+        scaled_position(position, Vec3::new(0.0, 0.65, 1.70), scale),
         Vec3::new(1.57, 0.0, 0.0),
         scaled_size(Vec3::new(0.18, 0.04, 0.18), scale),
         &red_seal,
     );
 
-    // -- CENTRAL TABLE (Meeting Area) --
     append_primitive(
         &mut objects,
         Box::new(Cube),
@@ -1291,7 +1320,6 @@ pub fn build_secret_room_interior(
         scaled_size(Vec3::new(0.8, 0.14, 0.5), scale),
         &dark_wood,
     );
-    // Scroll open on table
     append_primitive(
         &mut objects,
         Box::new(Cube),
@@ -1300,7 +1328,6 @@ pub fn build_secret_room_interior(
         scaled_size(Vec3::new(0.25, 0.02, 0.35), scale),
         &materials.paper,
     );
-    // Sake / Tea Set
     append_primitive(
         &mut objects,
         Box::new(Cylinder),
@@ -1308,248 +1335,193 @@ pub fn build_secret_room_interior(
         Vec3::zeros(),
         scaled_size(Vec3::new(0.06, 0.12, 0.06), scale),
         &ceramic,
-    ); // Bottle
+    );
     append_primitive(
         &mut objects,
         Box::new(Cylinder),
-        scaled_position(position, Vec3::new(0.25, 0.31, 0.1), scale),
+        scaled_position(position, Vec3::new(0.25, 0.31, 0.05), scale),
         Vec3::zeros(),
         scaled_size(Vec3::new(0.04, 0.06, 0.04), scale),
         &ceramic,
-    ); // Cup
+    );
     append_primitive(
         &mut objects,
         Box::new(Cylinder),
-        scaled_position(position, Vec3::new(0.15, 0.31, 0.2), scale),
+        scaled_position(position, Vec3::new(0.15, 0.31, 0.15), scale),
         Vec3::zeros(),
         scaled_size(Vec3::new(0.04, 0.06, 0.04), scale),
         &ceramic,
-    ); // Cup
-
-    // -- TOKONOMA (Back Right) --
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(0.65, 0.20, 0.65), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.7, 0.12, 0.35), scale),
-        &wood,
-    );
-    // Picture with Seal
-    let picture = materials
-        .paper
-        .clone()
-        .with_texture(Arc::new(Texture::load_or_procedural(
-            "assets/objetos_textura/flores_jardÃƒÂ­n/cuadro_1.png",
-            ProceduralTexture::Paper,
-        )));
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(0.65, 0.55, 0.81), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.55, 0.70, 0.04), scale),
-        &picture,
-    );
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(0.58, 0.45, 0.78), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.08, 0.45, 0.03), scale),
-        &red_seal,
-    );
-    // Glass Sphere (Preserved refraction)
-    append_primitive(
-        &mut objects,
-        Box::new(Sphere),
-        scaled_position(position, Vec3::new(0.65, 0.36, 0.60), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.20, 0.20, 0.20), scale),
-        &glass,
-    );
-    // Small wooden stand for the sphere
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(0.65, 0.27, 0.60), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.15, 0.04, 0.15), scale),
-        &dark_wood,
     );
 
-    // -- MIRROR (Back Left) --
-    // Base table for mirror
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(-0.73, 0.25, 0.65), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.6, 0.2, 0.35), scale),
-        &dark_wood,
-    );
-    // Mirror Frame & Glass
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(-0.73, 0.60, 0.78), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.55, 0.7, 0.07), scale),
-        &wood,
-    );
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(-0.73, 0.60, 0.74), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.48, 0.6, 0.03), scale),
-        &mirror,
-    );
-    // Floor lantern reflecting in mirror
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(-0.55, 0.42, 0.60), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.08, 0.14, 0.08), scale),
-        &wood,
-    );
-    append_primitive(
-        &mut objects,
-        Box::new(Sphere),
-        scaled_position(position, Vec3::new(-0.55, 0.42, 0.60), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.07, 0.12, 0.07), scale),
-        &paper_glow,
-    );
+    // Removed steel cube and gold cylinder
 
-    // -- ARCHIVE / SHELVES (Left Wall) --
-    // We put it on the left wall to balance the room, closer to foreground
+    let mut sand = materials.stone.clone();
+    sand.diffuse = Color::new(230, 220, 200);
+    sand.texture = None;
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(-0.95, 0.45, 0.0), scale),
+        scaled_position(position, Vec3::new(-1.6, 0.15, 0.5), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(0.15, 0.7, 0.7), scale),
-        &wood,
-    );
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(-0.85, 0.25, 0.0), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.15, 0.04, 0.65), scale),
-        &wood,
-    );
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(-0.85, 0.55, 0.0), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.15, 0.04, 0.65), scale),
-        &wood,
-    );
-    // Scroll stacks
-    append_primitive(
-        &mut objects,
-        Box::new(Cylinder),
-        scaled_position(position, Vec3::new(-0.85, 0.30, -0.1), scale),
-        Vec3::new(0.0, 0.0, 1.57),
-        scaled_size(Vec3::new(0.04, 0.12, 0.04), scale),
-        &materials.paper,
-    );
-    append_primitive(
-        &mut objects,
-        Box::new(Cylinder),
-        scaled_position(position, Vec3::new(-0.85, 0.30, 0.0), scale),
-        Vec3::new(0.0, 0.0, 1.57),
-        scaled_size(Vec3::new(0.04, 0.12, 0.04), scale),
-        &materials.paper,
-    );
-    // Boxes
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(-0.85, 0.62, 0.15), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.12, 0.1, 0.2), scale),
-        &dark_wood,
-    );
-
-    // -- METAL OBJECT (Foreground Right) --
-    // Put it on a small stand
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(0.75, 0.20, -0.2), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.2, 0.12, 0.2), scale),
+        scaled_size(Vec3::new(0.8, 0.1, 2.0), scale),
         &dark_wood,
     );
     append_primitive(
         &mut objects,
-        Box::new(Sphere),
-        scaled_position(position, Vec3::new(0.75, 0.35, -0.2), scale),
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-1.6, 0.18, 0.5), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(0.14, 0.14, 0.14), scale),
-        &materials.metal,
+        scaled_size(Vec3::new(0.7, 0.04, 1.9), scale),
+        &sand,
+    );
+    // Real bamboo cluster in the inner garden
+    objects.extend(build_bamboo_cluster(
+        scaled_position(position, Vec3::new(-1.6, 0.05, 0.5), scale),
+        scale * 0.4,
+        materials,
+    ));
+    objects.extend(build_bamboo_cluster(
+        scaled_position(position, Vec3::new(-1.4, 0.05, 1.2), scale),
+        scale * 0.35,
+        materials,
+    ));
+
+    // Flowers in the inner garden
+    let mut mat_flower = materials.paper.clone();
+    mat_flower.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
+        "assets/objetos_textura/flores_jardín/tsubaki.png",
+        ProceduralTexture::Paper,
+    )));
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-1.7, 0.20, 0.1), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.3, 0.3, 0.02), scale),
+        &mat_flower,
+    );
+    let mut mat_flower2 = materials.paper.clone();
+    mat_flower2.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
+        "assets/objetos_textura/flores_jardín/higanbana.png",
+        ProceduralTexture::Paper,
+    )));
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-1.3, 0.20, 0.8), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.3, 0.3, 0.02), scale),
+        &mat_flower2,
     );
 
-    // -- STORAGE CRATES (Foreground Right Corner) --
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(0.80, 0.22, 0.2), scale),
-        Vec3::new(0.0, 0.1, 0.0),
-        scaled_size(Vec3::new(0.25, 0.25, 0.25), scale),
-        &wood,
-    );
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(0.75, 0.40, 0.25), scale),
-        Vec3::new(0.0, -0.1, 0.0),
-        scaled_size(Vec3::new(0.2, 0.15, 0.2), scale),
-        &wood,
-    );
-
-    // -- 3 PAPER KEEPSAKES (Front Left) --
-    // Sitting on a small tray
-    append_primitive(
-        &mut objects,
-        Box::new(Cube),
-        scaled_position(position, Vec3::new(-0.5, 0.16, -0.6), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.5, 0.02, 0.2), scale),
-        &dark_wood,
-    );
-    for (i, color) in [
-        Color::new(220, 55, 65),
-        Color::new(80, 155, 205),
-        Color::new(240, 206, 115),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let mut paper = materials.paper.clone().with_emission(color, 0.12);
-        paper.texture = None;
-        paper.diffuse = color;
+    for (x, z) in [
+        (-1.6, 1.4),
+        (1.6, 1.4),
+        (-1.6, -1.5),
+        (1.6, -1.5),
+    ] {
         append_primitive(
             &mut objects,
             Box::new(Cube),
-            scaled_position(
-                position,
-                Vec3::new(-0.62 + i as f32 * 0.12, 0.18, -0.6),
-                scale,
-            ),
-            Vec3::new(-0.2, 0.1 * i as f32, 0.0),
-            scaled_size(Vec3::new(0.10, 0.14, 0.02), scale),
-            &paper,
+            scaled_position(position, Vec3::new(x, 0.2, z), scale),
+            Vec3::zeros(),
+            scaled_size(Vec3::new(0.15, 0.2, 0.15), scale),
+            &dark_wood,
+        );
+        append_primitive(
+            &mut objects,
+            Box::new(Cube),
+            scaled_position(position, Vec3::new(x, 0.6, z), scale),
+            Vec3::zeros(),
+            scaled_size(Vec3::new(0.12, 0.6, 0.12), scale),
+            &paper_glow,
+        );
+        append_primitive(
+            &mut objects,
+            Box::new(Cube),
+            scaled_position(position, Vec3::new(x, 0.95, z), scale),
+            Vec3::zeros(),
+            scaled_size(Vec3::new(0.15, 0.05, 0.15), scale),
+            &dark_wood,
         );
     }
-    objects
-}
 
+    let mut leather = materials.dark_wood.clone();
+    leather.diffuse = Color::new(80, 40, 30);
+    leather.texture = None;
+    
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(1.2, 0.2, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.3, 0.15, 0.4), scale),
+        &leather,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(1.4, 0.35, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.1, 0.3, 0.4), scale),
+        &leather,
+    );
+
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(1.2, 0.2, -0.9), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.3, 0.15, 0.4), scale),
+        &leather,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(1.4, 0.35, -0.9), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.1, 0.3, 0.4), scale),
+        &leather,
+    );
+
+    let mut canvas = materials.paper.clone();
+    canvas.diffuse = Color::new(200, 200, 200);
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(2.0, 0.7, -0.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.02, 0.3, 0.5), scale),
+        &canvas,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(1.99, 0.7, -0.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.04, 0.32, 0.52), scale),
+        &dark_wood,
+    );
+
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.8, 0.65, 1.71), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.4, 0.6, 0.02), scale),
+        &mirror,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.8, 0.65, 1.72), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.44, 0.64, 0.04), scale),
+        &wood,
+    );
+
+    (objects, fpp_walls)
+}
 pub fn build_back_door(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
     let mut objects = Vec::new();
     // Trapdoor horizontal in the garden
@@ -1568,12 +1540,12 @@ pub fn build_day2_flowers(position: Vec3, scale: f32, materials: &AssetMaterials
     let mut objects = Vec::new();
     let mut asagao = materials.paper.clone();
     asagao.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
-        "assets/objetos_textura/flores_jardÃƒÂ­n/asagao.png",
+        "assets/objetos_textura/flores_jardÃƒÆ’Ã‚Â­n/asagao.png",
         ProceduralTexture::Paper,
     )));
     let mut ayame = materials.paper.clone();
     ayame.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
-        "assets/objetos_textura/flores_jardÃƒÂ­n/ayame.png",
+        "assets/objetos_textura/flores_jardÃƒÆ’Ã‚Â­n/ayame.png",
         ProceduralTexture::Paper,
     )));
 
@@ -1598,6 +1570,41 @@ pub fn build_day2_flowers(position: Vec3, scale: f32, materials: &AssetMaterials
     objects
 }
 
+pub fn build_more_garden_flowers(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
+    let mut objects = Vec::new();
+    let file_names = ["kiku", "nadeshiko", "tsubaki"];
+    let offsets = [
+        Vec3::new(-2.5, 0.15, 1.2),
+        Vec3::new(2.8, 0.15, -0.8),
+        Vec3::new(1.5, 0.15, 2.5),
+    ];
+    // Copy the path from day2_flowers to avoid encoding issues
+    
+    // Actually, I'll just use the exact bytes from asagao's path by using a trick
+    // Or I can just write the UTF8 string. Let's see if the file system can resolve it if I write "flores_jardín".
+    // I will use a wildcard if possible? No.
+    // Let's just do:
+    for (i, name) in file_names.iter().enumerate() {
+        let mut mat = materials.paper.clone();
+        // Since the string is mangled in the source file, let's just find the mangled string using include_str or similar? No.
+        // I will write the string as UTF-8. The user's system is Windows. 
+        // If it fails, I'll fix it later.
+        mat.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
+            &format!("assets/objetos_textura/flores_jardín/{}.png", name),
+            ProceduralTexture::Paper,
+        )));
+        append_primitive(
+            &mut objects,
+            Box::new(Cube),
+            scaled_position(position, offsets[i], scale),
+            Vec3::zeros(),
+            scaled_size(Vec3::new(0.3, 0.3, 0.02), scale),
+            &mat,
+        );
+    }
+    objects
+}
+
 pub fn build_day3_decorations(
     position: Vec3,
     scale: f32,
@@ -1606,7 +1613,7 @@ pub fn build_day3_decorations(
     let mut objects = Vec::new();
     let mut ceramica = materials.stone.clone();
     ceramica.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
-        "assets/objetos_textura/cerÃƒÂ¡mica_1.png",
+        "assets/objetos_textura/cerÃƒÆ’Ã‚Â¡mica_1.png",
         ProceduralTexture::Paper,
     )));
     let mut maceta = materials.stone.clone();
@@ -1649,7 +1656,7 @@ pub fn build_day5_higanbana(position: Vec3, scale: f32, materials: &AssetMateria
     let mut objects = Vec::new();
     let mut higanbana = materials.paper.clone();
     higanbana.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
-        "assets/objetos_textura/flores_jardÃƒÂ­n/higanbana.png",
+        "assets/objetos_textura/flores_jardÃƒÆ’Ã‚Â­n/higanbana.png",
         ProceduralTexture::Paper,
     )));
 
@@ -1669,7 +1676,7 @@ pub fn build_day6_clue(position: Vec3, scale: f32, materials: &AssetMaterials) -
     let mut objects = Vec::new();
     let mut mat = materials.paper.clone();
     mat.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
-        "assets/objetos_textura/flores_jardÃƒÂ­n/cuadro_1.png",
+        "assets/objetos_textura/flores_jardÃƒÆ’Ã‚Â­n/cuadro_1.png",
         ProceduralTexture::Paper,
     )));
     // Plaque near the right lantern
@@ -1855,87 +1862,72 @@ pub fn build_back_garden_plants(
 ) -> Vec<Object> {
     let mut objects = Vec::new();
 
-    // Several bushes at the back (Z from -3.5 to -7.5)
-    for (x, z, r) in [
-        (-3.0, -4.5, 0.6),
-        (-1.5, -5.0, 0.5),
-        (1.0, -6.0, 0.7),
-        (3.5, -4.0, 0.4),
-        (2.0, -5.5, 0.5),
-        (-2.5, -6.5, 0.4),
-        (-0.5, -7.0, 0.55),
-        (2.8, -7.2, 0.6),
+    // Bamboo clusters
+    for (x, z) in [
+        (-2.5, -4.5),
+        (-1.5, -6.5),
+        (2.5, -5.0),
+        (1.0, -7.0),
     ] {
-        // Bush
-        append_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            scaled_position(position, Vec3::new(x, 0.1 + r * 0.4, z), scale),
-            Vec3::zeros(),
-            scaled_size(Vec3::new(r, r * 0.8, r), scale),
-            &materials.foliage,
-        );
+        objects.extend(build_bamboo_cluster(
+            scaled_position(position, Vec3::new(x, 0.0, z), scale),
+            scale * 0.8,
+            materials,
+        ));
+    }
 
-        // Add some blossoms on top of bushes
-        append_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            scaled_position(position, Vec3::new(x + 0.1, 0.1 + r * 0.8, z + 0.1), scale),
-            Vec3::zeros(),
-            scaled_size(Vec3::new(r * 0.2, r * 0.2, r * 0.2), scale),
-            &materials.blossom,
-        );
-        append_primitive(
-            &mut objects,
-            Box::new(Sphere),
-            scaled_position(position, Vec3::new(x - 0.15, 0.1 + r * 0.7, z - 0.1), scale),
-            Vec3::zeros(),
-            scaled_size(Vec3::new(r * 0.25, r * 0.25, r * 0.25), scale),
-            &materials.blossom,
-        );
+    // Sakura Trees
+    for (x, z) in [
+        (-3.5, -6.0),
+        (3.0, -6.5),
+        (-0.5, -8.0),
+    ] {
+        objects.extend(build_sakura_tree_variant(
+            scaled_position(position, Vec3::new(x, 0.0, z), scale),
+            scale * 1.2,
+            materials,
+            0,
+        ));
     }
 
     // Standalone flower patches on the ground (purple-ish)
     let mut flower_mat = materials.blossom.clone();
     flower_mat.diffuse = Color::new(200, 100, 220);
     flower_mat.texture = None;
-
-    // Add blue/cyan flowers
-    let mut blue_flower = materials.blossom.clone();
-    blue_flower.diffuse = Color::new(100, 150, 240);
-    blue_flower.texture = None;
-
-    for (x, z, use_blue) in [
-        (-2.0, -3.5, false),
-        (0.5, -4.2, true),
-        (1.5, -3.8, false),
-        (-1.0, -5.8, true),
-        (3.0, -6.5, false),
-        (-3.5, -5.5, true),
-        (0.0, -4.8, false),
+    for (x, z, r) in [
+        (-2.0, -3.8, 0.2),
+        (1.5, -4.2, 0.25),
+        (0.5, -3.5, 0.15),
     ] {
         append_primitive(
             &mut objects,
             Box::new(Cube),
-            scaled_position(position, Vec3::new(x, 0.11, z), scale),
+            scaled_position(position, Vec3::new(x, 0.02, z), scale),
             Vec3::zeros(),
-            scaled_size(Vec3::new(0.25, 0.05, 0.25), scale),
-            if use_blue { &blue_flower } else { &flower_mat },
+            scaled_size(Vec3::new(r, 0.02, r), scale),
+            &flower_mat,
         );
-        // Central bud
+    }
+
+    // Add blue/cyan flowers
+    let mut blue_flower = flower_mat.clone();
+    blue_flower.diffuse = Color::new(100, 150, 240);
+    for (x, z, r) in [
+        (-1.0, -4.5, 0.18),
+        (2.2, -3.9, 0.22),
+    ] {
         append_primitive(
             &mut objects,
-            Box::new(Sphere),
-            scaled_position(position, Vec3::new(x, 0.15, z), scale),
+            Box::new(Cube),
+            scaled_position(position, Vec3::new(x, 0.02, z), scale),
             Vec3::zeros(),
-            scaled_size(Vec3::new(0.12, 0.08, 0.12), scale),
-            &materials.warm_glow,
+            scaled_size(Vec3::new(r, 0.02, r), scale),
+            &blue_flower,
         );
     }
 
     objects
 }
-
 pub fn build_japanese_ruins(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
     let mut objects = Vec::new();
 
@@ -2045,3 +2037,164 @@ pub fn build_japanese_ruins(position: Vec3, scale: f32, materials: &AssetMateria
 
     objects
 }
+
+pub fn build_cafe_interior(
+    position: Vec3,
+    scale: f32,
+    materials: &AssetMaterials,
+) -> (Vec<Object>, Vec<Object>) {
+    let mut objects = Vec::new();
+    let mut fpp_walls = Vec::new();
+
+    let mut wall_mat = materials.paper.clone();
+    wall_mat.diffuse = Color::new(220, 210, 190);
+
+    // We only add FPP Walls here, since the Japanese Cafe already builds the rest.
+    
+    // Front Wall (FPP Only) - covers the entrance
+    append_primitive(
+        &mut fpp_walls,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 0.76, 0.86), scale), // Z=0.86 matches the right panel
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.86, 0.82, 0.035), scale),
+        &materials.shoji,
+    );
+    // Wood lattice for front wall
+    for x_offset in [-0.32, -0.16, 0.0, 0.16, 0.32] {
+        append_primitive(
+            &mut fpp_walls,
+            Box::new(Cube),
+            scaled_position(
+                position,
+                Vec3::new(x_offset, 0.76, 0.89),
+                scale,
+            ),
+            Vec3::zeros(),
+            scaled_size(Vec3::new(0.022, 0.78, 0.025), scale),
+            &materials.wood,
+        );
+    }
+
+    // Left Wall Panel is now included in the base model (build_japanese_cafe)
+
+    // Exit mat (Base, needed for interactive clicking to exit)
+    let mut exit_mat_mat = materials.wood.clone();
+    exit_mat_mat.diffuse = Color::new(140, 110, 80);
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 0.17, 0.8), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.5, 0.01, 0.3), scale),
+        &exit_mat_mat,
+    );
+
+    // --- Cafe Interior Decorations ---
+    let floor_y = 0.21;
+    
+    // Main Counter at the back
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-0.4, floor_y + 0.2, -0.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(1.4, 0.4, 0.35), scale),
+        &materials.dark_wood,
+    );
+    // Countertop
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-0.4, floor_y + 0.41, -0.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(1.45, 0.03, 0.4), scale),
+        &materials.light_wood,
+    );
+
+    // Two low tables
+    for (tx, tz) in [(-0.8, 0.2), (0.8, -0.2)] {
+        append_primitive(
+            &mut objects,
+            Box::new(Cube),
+            scaled_position(position, Vec3::new(tx, floor_y + 0.12, tz), scale),
+            Vec3::zeros(),
+            scaled_size(Vec3::new(0.45, 0.03, 0.45), scale),
+            &materials.wood,
+        );
+        // Table legs
+        for lx in [-0.18, 0.18] {
+            for lz in [-0.18, 0.18] {
+                append_primitive(
+                    &mut objects,
+                    Box::new(Cylinder),
+                    scaled_position(position, Vec3::new(tx + lx, floor_y + 0.06, tz + lz), scale),
+                    Vec3::zeros(),
+                    scaled_size(Vec3::new(0.03, 0.12, 0.03), scale),
+                    &materials.dark_wood,
+                );
+            }
+        }
+        // Floor cushions (zabuton)
+        let mut cushion_mat = materials.paper.clone();
+        cushion_mat.diffuse = Color::new(80, 120, 90); // Greenish fabric
+        for (cx, cz) in [(tx - 0.35, tz), (tx + 0.35, tz), (tx, tz - 0.35), (tx, tz + 0.35)] {
+            append_primitive(
+                &mut objects,
+                Box::new(Cube),
+                scaled_position(position, Vec3::new(cx, floor_y + 0.02, cz), scale),
+                Vec3::zeros(),
+                scaled_size(Vec3::new(0.2, 0.04, 0.2), scale),
+                &cushion_mat,
+            );
+        }
+    }
+
+    // A cup on the counter
+    let mut cup_mat = materials.stone.clone();
+    cup_mat.diffuse = Color::new(220, 230, 220); // Matcha cup color
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(-0.2, floor_y + 0.44, -0.45), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.04, 0.05, 0.04), scale),
+        &cup_mat,
+    );
+    // Matcha inside the cup
+    let mut matcha_mat = materials.stone.clone();
+    matcha_mat.diffuse = Color::new(120, 180, 90);
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(-0.2, floor_y + 0.46, -0.45), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.035, 0.01, 0.035), scale),
+        &matcha_mat,
+    );
+
+    // Decorative indoor plant in the corner
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(1.2, floor_y + 0.1, -0.6), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.12, 0.2, 0.12), scale),
+        &materials.terracotta,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        scaled_position(position, Vec3::new(1.2, floor_y + 0.35, -0.6), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.25, 0.3, 0.25), scale),
+        &materials.foliage,
+    );
+
+    (objects, fpp_walls)
+}
+
+
+
+
+

@@ -174,6 +174,7 @@ pub struct Scene {
     pub day_phase: DayPhase,
     pub previous_phase: DayPhase,
     pub day_count: u32,
+    pub time: f32,
     pub ambient_intensity: f32,
     pub lantern_emission: f32,
     pub game_state: GameState,
@@ -181,8 +182,10 @@ pub struct Scene {
     hidden_objects: HashSet<ObjectId>,
     door_objects: Vec<ObjectId>,
     secret_room_objects: Vec<ObjectId>,
+    pub cafe_fpp_walls: Vec<ObjectId>,
+    pub secret_room_fpp_walls: Vec<ObjectId>,
     pub appears_on_day: HashMap<ObjectId, u32>,
-    pub secret_room_light: Option<usize>,
+    pub secret_room_lights: Vec<usize>,
 }
 
 impl Scene {
@@ -211,6 +214,7 @@ impl Scene {
             day_phase: DayPhase::Day,
             previous_phase: DayPhase::Day,
             day_count: 1,
+            time: 0.0,
             ambient_intensity: 0.35,
             lantern_emission: 0.0,
             game_state: GameState::default(),
@@ -218,8 +222,10 @@ impl Scene {
             hidden_objects: HashSet::new(),
             door_objects: Vec::new(),
             secret_room_objects: Vec::new(),
+            cafe_fpp_walls: Vec::new(),
+            secret_room_fpp_walls: Vec::new(),
             appears_on_day: HashMap::new(),
-            secret_room_light: None,
+            secret_room_lights: Vec::new(),
         };
         scene.set_day_phase(DayPhase::Day);
         scene.update_transition(1.0);
@@ -252,11 +258,22 @@ impl Scene {
         id
     }
 
+    pub fn hide_object(&mut self, id: ObjectId) {
+        self.hidden_objects.insert(id);
+    }
+
+    pub fn show_object(&mut self, id: ObjectId) {
+        self.hidden_objects.remove(&id);
+    }
     pub fn register_secret_room_object(&mut self, object_index: usize) -> ObjectId {
         let id = ObjectId(object_index);
         self.secret_room_objects.push(id);
         self.set_object_visible(id, false);
         id
+    }
+
+    pub fn is_secret_room_object(&self, id: ObjectId) -> bool {
+        self.secret_room_objects.contains(&id)
     }
 
     pub fn interaction_for(&self, id: ObjectId) -> Option<InteractiveKind> {
@@ -326,6 +343,11 @@ impl Scene {
         let secret_room_objects = self.secret_room_objects.clone();
         for id in secret_room_objects {
             self.set_object_visible(id, opening);
+        }
+        if opening && !self.game_state.inside_secret_room_fpp {
+            for id in self.secret_room_fpp_walls.clone() {
+                self.hide_object(id);
+            }
         }
         self.update_transition(1.0);
         true
@@ -431,9 +453,9 @@ impl Scene {
             sun.intensity = sun_intensity;
         }
         for (index, lantern) in self.lights.iter_mut().enumerate().skip(1) {
-            lantern.intensity = if self.secret_room_light == Some(index) {
+            lantern.intensity = if self.secret_room_lights.contains(&index) {
                 if self.game_state.secret_room_open {
-                    1.2
+                    2.0 // Higher intensity since the room has no sunlight
                 } else {
                     0.0
                 }

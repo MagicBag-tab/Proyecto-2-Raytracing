@@ -25,6 +25,8 @@ fn wood() -> Material {
     Material::new(Color::new(150, 86, 42))
         .with_albedo(0.82)
         .with_specular(24.0, 0.12)
+        .with_transparency(0.0, 1.0)
+        .with_reflectivity(0.0)
         .with_texture(Arc::new(Texture::procedural(ProceduralTexture::Wood)))
 }
 
