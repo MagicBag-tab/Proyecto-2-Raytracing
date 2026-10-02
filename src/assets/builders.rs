@@ -330,11 +330,7 @@ pub fn build_japanese_cafe(position: Vec3, scale: f32, materials: &AssetMaterial
             &materials.shoji,
         );
     }
-    objects.extend(create_door(
-        scaled_position(position, Vec3::new(0.0, 0.76, -0.81), scale),
-        scale,
-        materials,
-    ));
+    // The rear leaf is supplied by build_back_door and registered in Scene.
 
     for x in [-1.47, 1.47] {
         append_primitive(
@@ -714,6 +710,10 @@ pub fn build_bamboo_cluster(position: Vec3, scale: f32, materials: &AssetMateria
 
 pub fn build_toro_lantern(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
     let mut objects = Vec::new();
+    let glowing_paper = materials
+        .paper
+        .clone()
+        .with_emission(Color::new(255, 181, 76), 1.5);
 
     append_primitive(
         &mut objects,
@@ -752,7 +752,7 @@ pub fn build_toro_lantern(position: Vec3, scale: f32, materials: &AssetMaterials
             scaled_position(position, Vec3::new(0.0, 0.88, z), scale),
             Vec3::zeros(),
             scaled_size(Vec3::new(0.24, 0.25, 0.018), scale),
-            &materials.paper,
+            &glowing_paper,
         );
     }
     for x in [-0.145, 0.145] {
@@ -762,7 +762,7 @@ pub fn build_toro_lantern(position: Vec3, scale: f32, materials: &AssetMaterials
             scaled_position(position, Vec3::new(x, 0.88, 0.0), scale),
             Vec3::zeros(),
             scaled_size(Vec3::new(0.018, 0.25, 0.24), scale),
-            &materials.paper,
+            &glowing_paper,
         );
     }
     append_primitive(
@@ -996,53 +996,141 @@ pub fn create_door(position: Vec3, scale: f32, materials: &AssetMaterials) -> Ve
     objects
 }
 
+/// Open-backed miniature room, revealed as a cutaway behind the cafe.
 pub fn build_secret_room_interior(
     position: Vec3,
     scale: f32,
     materials: &AssetMaterials,
 ) -> Vec<Object> {
     let mut objects = Vec::new();
-
-    // Secret room base (darker stone)
+    let wall = materials
+        .stone
+        .clone()
+        .with_texture(Arc::new(Texture::load_or_procedural(
+            "assets/paredes/pared_sótano.png",
+            ProceduralTexture::Stone,
+        )));
+    for (offset, size) in [
+        (Vec3::new(0.0, 0.12, 0.0), Vec3::new(2.2, 0.12, 1.8)),
+        (Vec3::new(-1.06, 0.52, 0.0), Vec3::new(0.08, 0.8, 1.8)),
+        (Vec3::new(1.06, 0.52, 0.0), Vec3::new(0.08, 0.8, 1.8)),
+        (Vec3::new(0.0, 0.72, 0.86), Vec3::new(2.2, 1.2, 0.08)),
+    ] {
+        append_primitive(
+            &mut objects,
+            Box::new(Cube),
+            scaled_position(position, offset, scale),
+            Vec3::zeros(),
+            scaled_size(size, scale),
+            &wall,
+        );
+    }
+    // Wooden frame and the existing metal mirror, polished for readable reflections.
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, 0.1, 0.0), scale),
+        scaled_position(position, Vec3::new(-0.73, 0.78, 0.78), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(1.8, 0.05, 1.8), scale),
-        &materials.stone,
+        scaled_size(Vec3::new(0.65, 1.0, 0.07), scale),
+        &materials.wood,
     );
-
-    // Magical reflecting mirror (metal)
+    let mut mirror = materials.metal.clone().with_reflectivity(0.94);
+    mirror.texture = None;
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, 0.8, -0.85), scale),
+        scaled_position(position, Vec3::new(-0.73, 0.78, 0.73), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(0.8, 1.0, 0.05), scale),
-        &materials.metal,
+        scaled_size(Vec3::new(0.57, 0.86, 0.025), scale),
+        &mirror,
     );
-
-    // Glass potion/bottle (Refraction)
-    append_primitive(
-        &mut objects,
-        Box::new(Cylinder),
-        scaled_position(position, Vec3::new(-0.4, 0.4, -0.4), scale),
-        Vec3::zeros(),
-        scaled_size(Vec3::new(0.15, 0.4, 0.15), scale),
-        &materials.glass,
-    );
-
-    // Small warm light source inside
+    // An optically curved vessel in front of a recognizable paper panel.
+    let mut glass = materials.glass.clone();
+    glass.texture = None;
     append_primitive(
         &mut objects,
         Box::new(Sphere),
-        scaled_position(position, Vec3::new(0.4, 0.4, -0.4), scale),
+        scaled_position(position, Vec3::new(0.48, 0.52, -0.10), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(0.15, 0.15, 0.15), scale),
-        &materials.warm_glow,
+        scaled_size(Vec3::new(0.27, 0.34, 0.27), scale),
+        &glass,
     );
-
+    let picture = materials
+        .paper
+        .clone()
+        .with_texture(Arc::new(Texture::load_or_procedural(
+            "assets/objetos_textura/flores_jardín/cuadro_1.png",
+            ProceduralTexture::Paper,
+        )));
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.48, 0.60, 0.48), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.66, 0.80, 0.04), scale),
+        &picture,
+    );
+    // Red seal on the panel: straight edges make the glass distortion visible.
+    let seal = Material::new(Color::new(220, 48, 45)).with_albedo(0.9);
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.43, 0.50, 0.44), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.09, 0.54, 0.03), scale),
+        &seal,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.48, 0.58, 0.43), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.52, 0.07, 0.03), scale),
+        &seal,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        scaled_position(position, Vec3::new(-0.70, 0.35, -0.30), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.16, 0.17, 0.16), scale),
+        &materials.metal,
+    );
+    let glow = materials.warm_glow.clone().with_transparency(0.0, 1.0);
+    append_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        scaled_position(position, Vec3::new(-0.60, 0.46, -0.18), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.14, 0.26, 0.14), scale),
+        &glow,
+    );
+    // Three paper keepsakes echo the collected clues, and appear in the mirror.
+    for (i, color) in [
+        Color::new(220, 55, 65),
+        Color::new(80, 155, 205),
+        Color::new(240, 206, 115),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let paper = materials.paper.clone().with_emission(color, 0.12);
+        let mut paper = paper;
+        paper.texture = None;
+        paper.diffuse = color;
+        append_primitive(
+            &mut objects,
+            Box::new(Cube),
+            scaled_position(
+                position,
+                Vec3::new(-0.68 + i as f32 * 0.22, 0.27, -0.65),
+                scale,
+            ),
+            Vec3::new(-0.3, 0.0, 0.0),
+            scaled_size(Vec3::new(0.16, 0.20, 0.04), scale),
+            &paper,
+        );
+    }
     objects
 }
 
@@ -1051,9 +1139,9 @@ pub fn build_back_door(position: Vec3, scale: f32, materials: &AssetMaterials) -
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, 0.5, -1.0), scale),
+        scaled_position(position, Vec3::new(0.0, 0.76, -0.86), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(0.6, 1.2, 0.05), scale),
+        scaled_size(Vec3::new(0.78, 1.10, 0.06), scale),
         &materials.dark_wood,
     );
     objects
@@ -1154,7 +1242,7 @@ pub fn build_day5_higanbana(position: Vec3, scale: f32, materials: &AssetMateria
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(0.0, 0.25, -1.8), scale),
+        scaled_position(position, Vec3::new(2.15, 0.40, -2.1), scale),
         Vec3::zeros(),
         scaled_size(Vec3::new(0.5, 0.5, 0.02), scale),
         &higanbana,
@@ -1174,9 +1262,9 @@ pub fn build_day6_clue(position: Vec3, scale: f32, materials: &AssetMaterials) -
     append_primitive(
         &mut objects,
         Box::new(Cube),
-        scaled_position(position, Vec3::new(1.8, 0.4, -0.6), scale),
+        scaled_position(position, Vec3::new(3.2, 0.46, 0.95), scale),
         Vec3::zeros(),
-        scaled_size(Vec3::new(0.3, 0.3, 0.02), scale),
+        scaled_size(Vec3::new(0.44, 0.44, 0.035), scale),
         &mat,
     );
     objects
@@ -1190,9 +1278,9 @@ pub fn build_day7_clue(position: Vec3, scale: f32, materials: &AssetMaterials) -
     append_primitive(
         &mut objects,
         Box::new(Cylinder),
-        scaled_position(position, Vec3::new(-0.2, 0.2, 0.2), scale),
+        scaled_position(position, Vec3::new(2.6, 0.38, 1.1), scale),
         Vec3::new(0.0, 0.0, 1.57),
-        scaled_size(Vec3::new(0.04, 0.3, 0.04), scale),
+        scaled_size(Vec3::new(0.10, 0.52, 0.10), scale),
         &mat,
     );
     objects

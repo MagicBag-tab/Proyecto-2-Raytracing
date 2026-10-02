@@ -1,158 +1,103 @@
 # La Puerta Trasera
 
-## Description
+Diorama japonés interactivo renderizado por CPU con un ray tracer en Rust. Un café cambia durante siete días: aparecen flores, decoraciones y tres pistas que desbloquean una habitación secreta. La escena se construye con primitivas y reutiliza texturas locales o patrones procedurales.
 
-**La Puerta Trasera** es un diorama japonés en miniatura renderizado con un ray tracer escrito en Rust. Durante el día parece un pequeño café rodeado por un jardín; al cambiar la hora aparecen pistas que conducen a una puerta trasera y a una habitación secreta.
+## Ejecutar
 
-La escena se construye con primitivas geométricas. No requiere modelos 3D externos. Las texturas de imagen son opcionales: mientras no estén disponibles, se usan patrones procedurales.
-
-## Features
-
-- Diorama con café, jardín, árboles, cerezos, mesas, sillas, cercas, flores y faroles.
-- Orbitación de cámara con teclado y mouse, y zoom con la rueda.
-- Picking por rayo y selección del objeto visible más cercano.
-- Tres pistas con visibilidad ligada a día, atardecer y noche.
-- Puerta trasera bloqueada hasta encontrar las tres pistas.
-- Habitación secreta oculta que se revela al abrir la puerta.
-- Caja seleccionable y movible sin física.
-- Ciclo de iluminación día, atardecer y noche.
-- Render paralelo por píxel y tres modos de render existentes.
-
-## Controls
-
-- `Left click`: seleccionar un objeto o interactuar; las pistas se recogen al hacer clic.
-- `Left click + drag`: orbitar la cámara.
-- `Mouse wheel`: acercar o alejar la cámara.
-- `Arrow keys`: orbitar la cámara.
-- `W`, `A`, `S`, `D`: mover la caja cuando está seleccionada.
-- `Tab`: alternar entre día, atardecer y noche.
-- `1`, `2`, `3`: cambiar el modo de render.
-- `Esc`: cerrar la ventana.
-
-La barra de título muestra la fase, el contador de pistas y el estado de la puerta. Los eventos de interacción también se imprimen en la consola.
-
-## Ray Tracing Features
-
-El motor incluye intersecciones de rayo con cubos, esferas, planos, cilindros, conos, pirámides y triángulos; transformaciones de objeto; sombreado ambiental, difuso y especular; sombras; emisión; reflexión; refracción; Fresnel y rayos recursivos con profundidad limitada. El render se calcula en paralelo con Rayon.
-
-## Materials
-
-Los presets principales son madera, piedra, metal, vidrio y papel; el césped tiene un material propio. Cada uno conserva su albedo y parámetros especulares. El metal tiene reflectividad y el vidrio tiene transparencia e índice de refracción. Los assets de imagen son opcionales y se cargan desde `assets/textures/`; si faltan, se usan texturas procedurales.
-
-## Reflection
-
-La habitación secreta contiene una superficie decorativa metálica con reflectividad elevada para mostrar los rayos reflejados en un contexto reconocible. Los objetos metálicos del diorama también usan reflexión.
-
-## Refraction
-
-Las ventanas y el recipiente de vidrio de la habitación secreta usan el preset de vidrio, con transparencia `0.94` e índice de refracción `1.5`. El trazador combina transmisión, reflexión de Fresnel y rayos recursivos.
-
-## Skybox
-
-El fondo predeterminado es un gradiente direccional con paletas para día, atardecer y noche. También se admiten imágenes equirectangulares independientes por fase:
-
-- `assets/textures/sky_day.png`
-- `assets/textures/sky_sunset.png`
-- `assets/textures/sky_night.png`
-
-Si un archivo no existe, se mantiene el gradiente correspondiente.
-
-## Interactive Elements
-
-- **Pista del jardín:** visible en cualquier fase.
-- **Nota del café:** aparece en atardecer y noche.
-- **Pista oculta:** aparece únicamente de noche.
-- **Puerta trasera:** no se abre hasta encontrar las tres pistas; después, cada clic abre o cierra la entrada y revela u oculta la habitación.
-- **Caja:** selecciónala y muévela con `W`, `A`, `S`, `D`.
-
-La visibilidad de objetos ocultos también se respeta durante los rayos primarios y las pruebas de sombra.
-
-## Scene
-
-La escena conserva el jardín japonés construido con los builders existentes y añade una entrada trasera con abertura geométrica, pistas provisionales y una habitación secreta de escala reducida. La habitación incluye una superficie reflectante, un recipiente de vidrio y una luz cálida. Estos elementos están hechos con primitivas y sus materiales pueden sustituirse o ajustarse cuando estén listas las texturas y la dirección artística final.
-
-## Architecture
-
-- `src/main.rs`: composición de escena, render, iluminación y bucle de entrada.
-- `src/core/camera.rs`: cámara orbital, zoom y generación de rayos por píxel.
-- `src/core/picking.rs`: picking y selección de la intersección más cercana.
-- `src/core/interaction.rs`: identificadores, tipos interactivos y progreso narrativo.
-- `src/core/scene.rs`: objetos, luces, fases, visibilidad, skybox y acciones de escena.
-- `src/core/object.rs`: transformaciones e intersección de objetos.
-- `src/materials/`: color, presets y carga de texturas.
-- `src/shapes/`: primitivas geométricas.
-- `src/assets/builders.rs`: builders de casa, árboles, faroles, mesas, sillas y cercas.
-
-## How to Run
-
-Desde la raíz del proyecto:
+Desde la raíz del repositorio:
 
 ```powershell
-cargo run
+cargo run --release --offline
 ```
 
-La primera compilación puede tardar mientras Cargo construye las dependencias.
+`--offline` requiere las dependencias ya descargadas. En una instalación nueva, ejecutar primero `cargo build --release` con acceso a la red.
 
-## Video
+## Controles
 
-Pendiente de añadir el enlace al video de demostración.
-
-## Project Structure
-
-```text
-src/
-  assets/
-    builders.rs
-  core/
-    camera.rs
-    framebuffer.rs
-    interaction.rs
-    light.rs
-    object.rs
-    picking.rs
-    ray_intersect.rs
-    scene.rs
-    transform.rs
-  materials/
-    color.rs
-    presets.rs
-    texture.rs
-  shapes/
-  main.rs
-assets/
-  textures/   # Imágenes opcionales creadas para el proyecto
-```
-
-## Texturas que debo crear
-
-Las imágenes se leen desde `assets/textures/`. Los mapas auxiliares son opcionales; deben llamarse con el sufijo indicado para que el material los conecte.
-
-| Archivo | Uso |
+| Control | Acción |
 | --- | --- |
-| `wood.png` | Madera de casa, mesas, sillas, cercas y caja. |
-| `stone.png` | Plataforma, piedras y superficies de la habitación secreta. |
-| `metal.png` | Faroles, herrajes y espejo decorativo. |
-| `glass.png` | Ventanas y recipiente de vidrio. |
-| `paper.png` | Paredes, nota y detalles de papel. |
-| `grass.png` | Suelo del jardín. |
-| `<material>_normal.png` | Mapa normal opcional para un material, por ejemplo `wood_normal.png`. |
-| `<material>_specular.png` | Mapa especular opcional, por ejemplo `metal_specular.png`. |
-| `<material>_overlay.png` | Máscara de overlay opcional, por ejemplo `glass_overlay.png`; requiere su mapa normal asociado. |
-| `<material>_overlay_normal.png` | Normal del overlay, por ejemplo `glass_overlay_normal.png`. |
-| `sky_day.png` | Skybox equirectangular diurno. |
-| `sky_sunset.png` | Skybox equirectangular de atardecer. |
-| `sky_night.png` | Skybox equirectangular nocturno. |
+| Flechas | Orbitar la cámara |
+| Clic izquierdo + arrastre | Orbitar; superar 5 píxeles cancela la interacción |
+| Rueda | Zoom |
+| Clic izquierdo, al soltar | Recoger una pista o abrir/cerrar la puerta |
+| F1 / F2 / F3 / F4 | Amanecer / día / atardecer / noche |
+| F5–F11 | Seleccionar los días 1–7 y su fase narrativa |
+| 8 | Render completo |
+| 9 | Render sin overlay |
+| 0 | Render sin textura base ni mapas normales/especulares |
+| Esc | Salir |
 
-El overlay solo se conecta si existen ambos archivos `_overlay.png` y `_overlay_normal.png` para uno de estos materiales: `wood`, `stone`, `metal`, `glass`, `paper` o `grass`.
+La progresión temporal es manual. Cambiar de día conserva las pistas encontradas. Reiniciar la aplicación inicia una partida nueva. Los cambios de día o fase tienen un fundido de 0.55 segundos entre imágenes calculadas; calcular el nuevo render puede tardar antes de empezar el fundido.
 
-## Rubric Mapping
+## Recorrido de demostración
 
-- **Complejidad y creatividad:** escena compuesta, ciclo horario, pistas, puerta y habitación secreta; la valoración subjetiva depende de la presentación final.
-- **Atractivo visual:** geometría low-poly, materiales diferenciados, sombras y cambios de iluminación; las texturas y el pulido artístico finales quedan abiertos.
-- **Rotación del diorama y zoom:** orbitación con flechas o arrastre y zoom con rueda, con límites de distancia e inclinación.
-- **Materiales:** presets de madera, piedra, metal, vidrio y papel, además de césped; cada material usa un patrón o imagen y parámetros propios.
-- **Refracción:** vidrio transparente con índice de refracción y Fresnel en ventanas y recipiente.
-- **Reflexión:** superficies metálicas reflectantes y un espejo contextual en la habitación.
-- **Skybox:** gradiente direccional por fase y soporte para mapas equirectangulares diurnos, de atardecer y nocturnos.
+| Día / tecla | Fase inicial | Contenido acumulativo |
+| --- | --- | --- |
+| 1 / F5 | Día | Café, jardín, cerezos, bambú, faroles y patio |
+| 2 / F6 | Día | Flores asagao y ayame |
+| 3 / F7 | Día | Recipientes y maceta |
+| 4 / F8 | Atardecer | Primera marca luminosa en la puerta trasera |
+| 5 / F9 | Atardecer | Higanbana, primera pista en la esquina trasera del café |
+| 6 / F10 | Noche | Placa/cuadro junto al farol derecho, segunda pista |
+| 7 / F11 | Noche | Pergamino en el patio, tercera pista |
 
-La implementación deja preparados los sistemas para la demostración, pero la calificación final depende de la rúbrica y del resultado visual que se presente.
+1. Comenzar en el día 1 y mostrar el café con órbita y zoom.
+2. Avanzar con F6, F7 y F8 para mostrar flores, decoración y atardecer.
+3. En F9, buscar la higanbana roja junto a la esquina trasera derecha del café. Orbitar permite verla de cerca.
+4. En F10, recoger el cuadro junto al farol derecho.
+5. En F11, recoger el pergamino del patio.
+6. Con **PISTAS 3 / 3**, orbitar a la parte trasera y hacer clic en la puerta de madera situada en el centro del café.
+7. La puerta se desplaza y aparece el interior como un corte abierto del diorama. La cámara encuadra automáticamente la habitación; siguen disponibles órbita y zoom.
+8. Mostrar el espejo, la lámpara reflejada, el objeto metálico y el recipiente de vidrio que deforma el panel y su sello rojo.
+
+La primera pista admite cualquier fase desde el día 5. La segunda requiere amanecer, atardecer o noche desde el día 6. La tercera requiere noche desde el día 7. Una pista recogida permanece oculta. La puerta no abre hasta reunir las tres; hacer clic de nuevo en su hoja desplazada la cierra y oculta el interior y su luz.
+
+La UI usa una fuente bitmap embebida, sin dependencias adicionales: día en japonés, español debajo, contador desde 0/3, estado de la puerta y una indicación discreta. Texto amarillo con contorno negro.
+
+## Habitación y materiales
+
+Se integra `build_secret_room_interior` en la misma `Scene`. Contiene piso y paredes con `assets/paredes/pared_sótano.png`, marco de madera, espejo de metal con reflectividad 0.94, objeto metálico, vidrio con transparencia 0.94 e IOR 1.5, lámpara emisiva y tres recuerdos de las pistas. El panel detrás del vidrio reutiliza `cuadro_1.png`.
+
+El espejo refleja objetos reales de la habitación. La forma curva del vidrio permite distinguir la refracción frente a las líneas del sello. La luz del interior solo se activa al abrir. Los paneles de papel de los faroles emiten luz visible al atardecer y de noche; dos luces puntuales acompañan los faroles.
+
+## Render y arquitectura
+
+- Rust 2021; `nalgebra-glm`, `minifb`, `image` y `rayon`.
+- 800 × 600, perspectiva de 60°, render paralelo por píxel y actualización cuando cambia el estado.
+- Cubos, esferas, planos limitados, cilindros y pirámides; cono disponible pero sin uso en la escena.
+- Transformaciones, sombras duras, iluminación ambiental/difusa/especular, emisión, reflexión, refracción y Fresnel. Profundidad recursiva máxima configurada en 3.
+- Color lineal y mapeo tonal; soporte opcional de mapas normales, especulares y overlays.
+- Cuatro fases de skybox con cuatro capas de imagen por fase, transparencia y gradiente de respaldo.
+- `main.rs`: composición, render, controles y comandos de captura.
+- `core/scene.rs`: días, fases, visibilidad, puerta e interior.
+- `core/interaction.rs` y `core/picking.rs`: progreso, gesto clic/arrastre y picking.
+- `core/hud.rs`: texto bitmap y contador.
+- `assets/builders.rs`: geometría del café, jardín, pistas e interior.
+- `materials/` y `shapes/`: materiales, texturas e intersecciones existentes.
+
+No se agregaron dependencias, primitivas, física ni un renderer alternativo. El motor conserva sus límites: una muestra por píxel, recorrido lineal de objetos, sombras opacas incluso para vidrio y luces puntuales sin atenuación por distancia. Los PNG con alfa solo se recortan por transparencia en el skybox, no en las superficies de objetos.
+
+## Capturas reproducibles
+
+```powershell
+cargo build --release --offline
+1..7 | ForEach-Object { & .\target\release\ray-tracer-cube.exe "--render-day$_" }
+.\target\release\ray-tracer-cube.exe --render-secret-room
+```
+
+Los comandos generan `target/day1.png` a `target/day7.png`, con días/fases reales, UI y pistas todavía sin recoger. `--render-secret-room` prepara el día 7, recoge las pistas mediante `Scene::discover_clue`, abre con `Scene::toggle_secret_room` y guarda `target/secret-room.png` desde la cámara del interior. Es una captura de demostración, no una escena independiente.
+
+También se conservan `--render-day1-flat`, `--render-day1-textured`, `--render-day1-rear`, `--test-shadows` y `--test-materials`.
+
+## Validación
+
+```powershell
+cargo fmt --check
+cargo check --offline
+cargo test --offline
+cargo build --release --offline
+```
+
+Las pruebas incluyen intersecciones, sombras, cámara, picking, materiales, fases y progreso. Se agregaron comprobaciones del recorrido completo con picking sobre la escena real, bloqueo de puerta, apertura/cierre y luz del interior, persistencia de pistas, separación clic/arrastre, extremos del fundido y diferencias entre renders diarios sin UI.
+
+La compilación, las pruebas automatizadas y la inspección de PNG son verificaciones distintas: las pruebas no sustituyen una demostración manual en la ventana.

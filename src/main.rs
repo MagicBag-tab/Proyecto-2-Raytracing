@@ -18,11 +18,12 @@ use minifb::{Key, MouseButton, MouseMode, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
 use std::f32::consts::PI;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::assets::{
-    build_bamboo_cluster, build_base_diorama, build_cafe_patio, build_japanese_cafe, build_path,
-    build_rock_garden, build_sakura_tree_variant, build_toro_lantern, AssetMaterials,
+    build_bamboo_cluster, build_base_diorama, build_cafe_patio, build_japanese_cafe,
+    build_rock_garden, build_sakura_tree_variant, build_secret_room_interior, build_toro_lantern,
+    AssetMaterials,
 };
 use crate::core::camera::Camera;
 use crate::core::framebuffer::Framebuffer;
@@ -194,6 +195,9 @@ pub fn shade(intersect: &Intersect, ray_origin: &Vec3, scene: &Scene, render_mod
     let mut specular = Color::new(0, 0, 0);
 
     for light in &scene.lights {
+        if light.intensity <= 0.0 {
+            continue;
+        }
         let light_direction = (light.position - intersect.point).normalize();
         let light_intensity = if cast_shadow(intersect, &light_direction, light, scene) {
             0.0
@@ -444,6 +448,17 @@ fn create_scene(camera: Camera) -> Scene {
         intensity: 1.2,
     });
 
+    lights.push(Light::new(
+        Vec3::new(-1.8, 0.72, 1.18),
+        Color::new(255, 190, 105),
+        0.0,
+    ));
+    lights.push(Light::new(
+        Vec3::new(3.2, 0.65, 0.66),
+        Color::new(255, 190, 105),
+        0.0,
+    ));
+
     // Load Skyboxes
     let mut skybox = Skybox::new(Color::new(135, 206, 235));
     let _ = skybox.load_phase_layers(
@@ -484,6 +499,19 @@ fn create_scene(camera: Camera) -> Scene {
     );
 
     let mut scene = Scene::new(objects, lights, camera, skybox);
+
+    let anomaly = add_primitive(
+        &mut scene.objects,
+        Box::new(Cube),
+        Vec3::new(0.5, 1.20, -1.905),
+        Vec3::zeros(),
+        Vec3::new(0.23, 0.035, 0.02),
+        materials
+            .metal
+            .clone()
+            .with_emission(Color::new(230, 74, 66), 1.5),
+    );
+    scene.appears_on_day.insert(ObjectId(anomaly), 4);
 
     // Register objects for days
     let day2_ids = append_asset(
@@ -530,8 +558,22 @@ fn create_scene(camera: Camera) -> Scene {
     }
 
     for id in door_ids {
-        scene.register_interactive(id, InteractiveKind::BackDoor, true);
+        scene.register_door_part(id);
     }
+
+    let room_ids = append_asset(
+        &mut scene.objects,
+        build_secret_room_interior(Vec3::new(0.5, 0.0, -2.95), 1.0, &materials),
+    );
+    for id in room_ids {
+        scene.register_secret_room_object(id);
+    }
+    scene.secret_room_light = Some(scene.lights.len());
+    scene.lights.push(Light::new(
+        Vec3::new(0.2, 1.65, -3.4),
+        Color::new(255, 211, 150),
+        0.0,
+    ));
 
     scene.day_count = 1;
     scene.set_day_phase(DayPhase::Day);
@@ -540,9 +582,17 @@ fn create_scene(camera: Camera) -> Scene {
     scene
 }
 
+fn secret_room_camera() -> Camera {
+    Camera::new(
+        Vec3::new(0.5, 2.6, -7.0),
+        Vec3::new(0.5, 0.55, -2.95),
+        Vec3::y(),
+    )
+}
+
 fn create_camera() -> Camera {
     Camera::new(
-        Vec3::new(4.5, 8.0, 11.5),
+        Vec3::new(4.0, 5.8, 8.5),
         Vec3::new(0.0, 0.35, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
     )
@@ -705,30 +755,61 @@ fn save_test_render(framebuffer: &Framebuffer, path: &str) -> Result<(), image::
 
 fn main() {
     let test_mode = std::env::args().nth(1);
-    let requested_day = test_mode.as_deref()
+    let requested_day = test_mode
+        .as_deref()
         .and_then(|arg| arg.strip_prefix("--render-day"))
         .and_then(|day| day.parse::<u32>().ok())
         .filter(|day| (1..=7).contains(day));
-    let legacy_render = matches!(test_mode.as_deref(),
-        Some("--render-day1-flat" | "--render-day1-textured" | "--render-day1-rear"));
+    let legacy_render = matches!(
+        test_mode.as_deref(),
+        Some("--render-day1-flat" | "--render-day1-textured" | "--render-day1-rear")
+    );
     if requested_day.is_some() || legacy_render {
         let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
         let rear_view = test_mode.as_deref() == Some("--render-day1-rear");
         let camera = if rear_view {
-            Camera::new(Vec3::new(-3.2, 5.8, -8.5), Vec3::new(0.0, 0.35, 0.0), Vec3::y())
-        } else { create_camera() };
+            Camera::new(
+                Vec3::new(-3.2, 5.8, -8.5),
+                Vec3::new(0.0, 0.35, 0.0),
+                Vec3::y(),
+            )
+        } else {
+            create_camera()
+        };
         let mut scene = create_scene(camera);
         let day = requested_day.unwrap_or(1);
         scene.set_story_day(day);
         let flat = test_mode.as_deref() == Some("--render-day1-flat");
-        let path = if requested_day.is_some() { format!("target/day{day}.png") }
-            else if flat { "target/day1-flat.png".into() }
-            else if rear_view { "target/day1-rear.png".into() }
-            else { "target/day1-textured.png".into() };
+        let path = if requested_day.is_some() {
+            format!("target/day{day}.png")
+        } else if flat {
+            "target/day1-flat.png".into()
+        } else if rear_view {
+            "target/day1-rear.png".into()
+        } else {
+            "target/day1-textured.png".into()
+        };
         render(&mut framebuffer, &scene, if flat { 2 } else { 0 });
         crate::core::hud::draw(&mut framebuffer, &scene);
         save_test_render(&framebuffer, &path).expect("Could not save day render");
-        println!("Saved day {} ({:?}) to {}", scene.day_count, scene.day_phase, path);
+        println!(
+            "Saved day {} ({:?}) to {}",
+            scene.day_count, scene.day_phase, path
+        );
+        return;
+    }
+    if test_mode.as_deref() == Some("--render-secret-room") {
+        let mut scene = create_scene(secret_room_camera());
+        scene.set_story_day(7);
+        for index in 0..scene.objects.len() {
+            scene.discover_clue(ObjectId(index));
+        }
+        assert!(scene.toggle_secret_room());
+        let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+        render(&mut framebuffer, &scene, 0);
+        crate::core::hud::draw(&mut framebuffer, &scene);
+        save_test_render(&framebuffer, "target/secret-room.png").expect("Could not save room");
+        println!("Saved unlocked room to target/secret-room.png");
         return;
     }
     if matches!(
@@ -771,6 +852,8 @@ fn main() {
 
     let mut was_mouse_down = false;
     let mut pointer = PointerGesture::default();
+    let mut fade: Option<(Vec<u32>, Instant)> = None;
+    let mut display = vec![0u32; WIDTH * HEIGHT];
 
     // Helper for title updates
     let get_title = |scene: &Scene| -> String {
@@ -789,6 +872,7 @@ fn main() {
     window.set_title(&get_title(&scene));
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        let mut temporal_change = false;
         // Temporary render mode bindings
         if window.is_key_pressed(Key::Key8, minifb::KeyRepeat::No) {
             render_mode = 0;
@@ -806,24 +890,28 @@ fn main() {
         // Time of Day
         if window.is_key_pressed(Key::F1, minifb::KeyRepeat::No) {
             scene.set_day_phase(DayPhase::Dawn);
+            temporal_change = true;
             scene.update_transition(1.0);
             camera_moved = true;
             window.set_title(&get_title(&scene));
         }
         if window.is_key_pressed(Key::F2, minifb::KeyRepeat::No) {
             scene.set_day_phase(DayPhase::Day);
+            temporal_change = true;
             scene.update_transition(1.0);
             camera_moved = true;
             window.set_title(&get_title(&scene));
         }
         if window.is_key_pressed(Key::F3, minifb::KeyRepeat::No) {
             scene.set_day_phase(DayPhase::Sunset);
+            temporal_change = true;
             scene.update_transition(1.0);
             camera_moved = true;
             window.set_title(&get_title(&scene));
         }
         if window.is_key_pressed(Key::F4, minifb::KeyRepeat::No) {
             scene.set_day_phase(DayPhase::Night);
+            temporal_change = true;
             scene.update_transition(1.0);
             camera_moved = true;
             window.set_title(&get_title(&scene));
@@ -844,8 +932,9 @@ fn main() {
         {
             if window.is_key_pressed(*key, minifb::KeyRepeat::No) {
                 scene.set_story_day((i + 1) as u32);
+                temporal_change = true;
                 camera_moved = true;
-                window.set_title(&format!("La Puerta Trasera — Día {}", scene.day_count));
+                window.set_title(&get_title(&scene));
             }
         }
 
@@ -868,7 +957,9 @@ fn main() {
         if mouse_down && !was_mouse_down {
             pointer.press(mouse_position);
         }
-        if mouse_down { pointer.update(mouse_position); }
+        if mouse_down {
+            pointer.update(mouse_position);
+        }
         if !mouse_down && was_mouse_down {
             if let Some((x, y)) = pointer.release(mouse_position) {
                 if let Some(hit) = pick(
@@ -891,14 +982,27 @@ fn main() {
                                 }
                             }
                             InteractiveKind::BackDoor => {
-                                if scene.game_state.door_unlocked
-                                    && !scene.game_state.secret_room_open
-                                {
-                                    scene.game_state.secret_room_open = true;
-                                    let delta = Vec3::new(-0.8, 0.0, 0.0);
-                                    scene.objects[hit.object_index].translate_by(&delta);
+                                if scene.toggle_secret_room() {
+                                    scene.camera = if scene.game_state.secret_room_open {
+                                        secret_room_camera()
+                                    } else {
+                                        create_camera()
+                                    };
                                     camera_moved = true;
-                                    println!("¡La puerta trasera se ha abierto!");
+                                    window.set_title(&get_title(&scene));
+                                    println!(
+                                        "Puerta {}",
+                                        if scene.game_state.secret_room_open {
+                                            "abierta"
+                                        } else {
+                                            "cerrada"
+                                        }
+                                    );
+                                } else {
+                                    println!(
+                                        "La puerta necesita las tres pistas ({}/3).",
+                                        scene.game_state.clues_count()
+                                    );
                                 }
                             }
                             _ => {}
@@ -932,14 +1036,28 @@ fn main() {
         }
 
         if camera_moved {
+            let previous = temporal_change.then(|| display.clone());
             render(&mut framebuffer, &scene, render_mode);
             crate::core::hud::draw(&mut framebuffer, &scene);
             camera_moved = false;
+            fade = previous.map(|pixels| (pixels, Instant::now()));
         }
 
-        window
-            .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)
-            .unwrap();
+        if let Some((previous, start)) = &fade {
+            let progress = (start.elapsed().as_secs_f32() / 0.55).clamp(0.0, 1.0);
+            crate::core::framebuffer::crossfade(
+                previous,
+                &framebuffer.buffer,
+                &mut display,
+                progress,
+            );
+            if progress >= 1.0 {
+                fade = None;
+            }
+        } else {
+            display.copy_from_slice(&framebuffer.buffer);
+        }
+        window.update_with_buffer(&display, WIDTH, HEIGHT).unwrap();
         std::thread::sleep(frame_delay);
     }
 }
@@ -1047,5 +1165,146 @@ mod shadow_tests {
             &light,
             &scene
         ));
+    }
+}
+
+#[cfg(test)]
+mod story_tests {
+    use super::*;
+
+    fn interactive_id(scene: &Scene, kind: InteractiveKind) -> ObjectId {
+        (0..scene.objects.len())
+            .map(ObjectId)
+            .find(|id| scene.interaction_for(*id) == Some(kind))
+            .unwrap()
+    }
+
+    fn pick_near(scene: &Scene, target: Vec3, expected: ObjectId) {
+        let forward = (scene.camera.center - scene.camera.eye).normalize();
+        let right = forward.cross(&scene.camera.up).normalize();
+        let up = right.cross(&forward).normalize();
+        let delta = target - scene.camera.eye;
+        let depth = dot(&delta, &forward);
+        let half_height = (FOV / 2.0).tan() * depth;
+        let x = WIDTH as f32 / 2.0 + dot(&delta, &right) * HEIGHT as f32 / (2.0 * half_height);
+        let y = HEIGHT as f32 / 2.0 - dot(&delta, &up) * HEIGHT as f32 / (2.0 * half_height);
+        let mut found = false;
+        for dy in -10..=10 {
+            for dx in -10..=10 {
+                if pick(
+                    scene,
+                    &scene.camera,
+                    x + dx as f32,
+                    y + dy as f32,
+                    WIDTH,
+                    HEIGHT,
+                    FOV,
+                )
+                .is_some_and(|hit| hit.object_index == expected.0)
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if found {
+                break;
+            }
+        }
+        assert!(
+            found,
+            "Object {:?} cannot be picked near ({x}, {y})",
+            expected
+        );
+    }
+
+    #[test]
+    fn complete_story_can_be_picked_and_room_is_hidden_until_unlocked() {
+        let mut scene = create_scene(create_camera());
+        let clues = [0, 1, 2].map(|i| interactive_id(&scene, InteractiveKind::Clue(i)));
+        let door = interactive_id(&scene, InteractiveKind::BackDoor);
+        assert!(!scene.toggle_secret_room());
+        for id in clues {
+            assert!(!scene.discover_clue(id));
+        }
+        let mut last_count = 0;
+        for day in 1..=4 {
+            scene.set_story_day(day);
+            let count = (0..scene.objects.len())
+                .filter(|i| scene.is_object_visible(ObjectId(*i)))
+                .count();
+            assert!(count > last_count);
+            last_count = count;
+            assert_eq!(scene.game_state.clues_count(), 0);
+        }
+        scene.set_story_day(5);
+        scene.camera = secret_room_camera();
+        pick_near(&scene, Vec3::new(2.15, 0.40, -2.1), clues[0]);
+        assert!(scene.discover_clue(clues[0]));
+        assert!(!scene.discover_clue(clues[0]));
+        assert!(!scene.toggle_secret_room());
+        scene.set_story_day(6);
+        scene.set_day_phase(DayPhase::Day);
+        assert!(!scene.discover_clue(clues[1]));
+        scene.set_day_phase(DayPhase::Dawn);
+        assert!(scene.is_object_visible(clues[1]));
+        scene.set_day_phase(DayPhase::Night);
+        scene.camera = create_camera();
+        pick_near(&scene, Vec3::new(3.2, 0.46, 0.95), clues[1]);
+        assert!(scene.discover_clue(clues[1]));
+        assert!(!scene.toggle_secret_room());
+        scene.set_story_day(7);
+        scene.set_day_phase(DayPhase::Sunset);
+        assert!(!scene.discover_clue(clues[2]));
+        scene.set_day_phase(DayPhase::Night);
+        pick_near(&scene, Vec3::new(2.6, 0.38, 1.1), clues[2]);
+        assert!(scene.discover_clue(clues[2]));
+        assert_eq!(scene.game_state.clues_count(), 3);
+        scene.camera = secret_room_camera();
+        pick_near(&scene, Vec3::new(0.5, 0.76, -1.86), door);
+        let hidden: Vec<_> = (0..scene.objects.len())
+            .map(ObjectId)
+            .filter(|id| !scene.is_object_visible(*id) && !clues.contains(id))
+            .collect();
+        assert!(hidden.len() >= 8);
+        let ray_origin = Vec3::new(0.5, 0.76, -2.3);
+        let closed_hit = scene.objects[door.0]
+            .ray_intersect(&ray_origin, &Vec3::z())
+            .unwrap();
+        assert!(scene.toggle_secret_room());
+        assert!(hidden.iter().all(|id| scene.is_object_visible(*id)));
+        assert!(scene.lights[scene.secret_room_light.unwrap()].intensity > 0.0);
+        assert!(scene.objects[door.0]
+            .ray_intersect(&ray_origin, &Vec3::z())
+            .is_none());
+        scene.set_story_day(1);
+        assert!(hidden.iter().all(|id| scene.is_object_visible(*id)));
+        assert!(scene.toggle_secret_room());
+        assert!(hidden.iter().all(|id| !scene.is_object_visible(*id)));
+        assert_eq!(
+            scene.lights[scene.secret_room_light.unwrap()].intensity,
+            0.0
+        );
+        let closed_again = scene.objects[door.0]
+            .ray_intersect(&ray_origin, &Vec3::z())
+            .unwrap();
+        assert!((closed_hit.distance - closed_again.distance).abs() < 1e-5);
+        scene.set_story_day(7);
+        assert!(clues.iter().all(|id| !scene.is_object_visible(*id)));
+    }
+
+    #[test]
+    fn each_day_changes_the_render_without_hud() {
+        let mut scene = create_scene(create_camera());
+        let mut frame = Framebuffer::new(240, 180);
+        let mut previous = Vec::new();
+        for day in 1..=7 {
+            scene.set_story_day(day);
+            render(&mut frame, &scene, 0);
+            assert!(
+                frame.buffer != previous,
+                "Day {day} has no visible scene change"
+            );
+            previous.clone_from(&frame.buffer);
+        }
     }
 }

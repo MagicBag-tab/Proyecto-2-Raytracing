@@ -37,3 +37,31 @@ impl Framebuffer {
         self.current_color = color;
     }
 }
+
+/// Blend two already-rendered frames so the transition never retraces the scene.
+pub fn crossfade(previous: &[u32], next: &[u32], output: &mut [u32], progress: f32) {
+    let weight = (progress.clamp(0.0, 1.0) * 256.0).round() as u32;
+    for ((pixel, old), new) in output.iter_mut().zip(previous).zip(next) {
+        *pixel = 0;
+        for shift in [0, 8, 16] {
+            let a = (old >> shift) & 255;
+            let b = (new >> shift) & 255;
+            *pixel |= ((a * (256 - weight) + b * weight) / 256) << shift;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::crossfade;
+    #[test]
+    fn fade_preserves_endpoints_and_blends_channels() {
+        let mut output = [0];
+        crossfade(&[0xff0000], &[0x0000ff], &mut output, 0.0);
+        assert_eq!(output, [0xff0000]);
+        crossfade(&[0xff0000], &[0x0000ff], &mut output, 0.5);
+        assert_eq!(output, [0x7f007f]);
+        crossfade(&[0xff0000], &[0x0000ff], &mut output, 1.0);
+        assert_eq!(output, [0x0000ff]);
+    }
+}

@@ -182,6 +182,7 @@ pub struct Scene {
     door_objects: Vec<ObjectId>,
     secret_room_objects: Vec<ObjectId>,
     pub appears_on_day: HashMap<ObjectId, u32>,
+    pub secret_room_light: Option<usize>,
 }
 
 impl Scene {
@@ -218,6 +219,7 @@ impl Scene {
             door_objects: Vec::new(),
             secret_room_objects: Vec::new(),
             appears_on_day: HashMap::new(),
+            secret_room_light: None,
         };
         scene.set_day_phase(DayPhase::Day);
         scene.update_transition(1.0);
@@ -308,6 +310,7 @@ impl Scene {
         for id in secret_room_objects {
             self.set_object_visible(id, opening);
         }
+        self.update_transition(1.0);
         true
     }
 
@@ -408,8 +411,16 @@ impl Scene {
             sun.color = sun_color;
             sun.intensity = sun_intensity;
         }
-        for lantern in self.lights.iter_mut().skip(1) {
-            lantern.intensity = lantern_intensity;
+        for (index, lantern) in self.lights.iter_mut().enumerate().skip(1) {
+            lantern.intensity = if self.secret_room_light == Some(index) {
+                if self.game_state.secret_room_open {
+                    1.2
+                } else {
+                    0.0
+                }
+            } else {
+                lantern_intensity
+            };
         }
         self.ambient_intensity = ambient;
         self.lantern_emission = lantern_emission;

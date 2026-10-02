@@ -24,7 +24,11 @@ impl PointerGesture {
 
     pub fn release(&mut self, position: Option<(f32, f32)>) -> Option<(f32, f32)> {
         self.update(position);
-        let click = self.pressed_at.take().and(position).filter(|_| !self.dragging);
+        let click = self
+            .pressed_at
+            .take()
+            .and(position)
+            .filter(|_| !self.dragging);
         self.dragging = false;
         click
     }
@@ -85,5 +89,22 @@ mod tests {
         assert!(!state.found_clue(3));
         assert_eq!(state.clues_count(), 0);
         assert!(!state.door_unlocked);
+    }
+}
+
+#[cfg(test)]
+mod gesture_tests {
+    use super::PointerGesture;
+    #[test]
+    fn drag_returning_to_start_is_not_a_click() {
+        let mut gesture = PointerGesture::default();
+        gesture.press(Some((20.0, 30.0)));
+        gesture.update(Some((40.0, 30.0)));
+        assert!(gesture.release(Some((20.0, 30.0))).is_none());
+        gesture.press(Some((20.0, 30.0)));
+        assert_eq!(gesture.release(Some((22.0, 31.0))), Some((22.0, 31.0)));
+        gesture.press(Some((20.0, 30.0)));
+        assert!(gesture.release(None).is_none());
+        assert!(gesture.release(Some((20.0, 30.0))).is_none());
     }
 }
