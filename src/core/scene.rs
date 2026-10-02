@@ -271,7 +271,11 @@ impl Scene {
         }
     }
 
-    pub fn add_interactive(&mut self, id: ObjectId, kind: crate::core::interaction::InteractiveKind) {
+    pub fn add_interactive(
+        &mut self,
+        id: ObjectId,
+        kind: crate::core::interaction::InteractiveKind,
+    ) {
         self.interactive_objects.insert(id, kind);
     }
 
@@ -352,7 +356,9 @@ impl Scene {
                         _ => false,
                     }
             }
-            InteractiveKind::BackDoor | InteractiveKind::Movable | InteractiveKind::CafeEntrance => true,
+            InteractiveKind::BackDoor
+            | InteractiveKind::Movable
+            | InteractiveKind::CafeEntrance => true,
         }
     }
 

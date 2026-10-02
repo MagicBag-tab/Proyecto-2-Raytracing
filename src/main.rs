@@ -1346,6 +1346,24 @@ mod story_tests {
     #[test]
     fn complete_story_can_be_picked_and_room_is_hidden_until_unlocked() {
         let mut scene = create_scene(create_camera());
+        // --- CAFE THRESHOLD (ENTRY/EXIT) ---
+        let mat_material = Material::new(Color::new(60, 60, 70));
+        let welcome_mat = crate::core::object::Object::new(
+            Box::new(crate::shapes::cube::Cube),
+            crate::core::transform::Transform::new(
+                Vec3::new(0.5, 0.22, -0.15),
+                Vec3::zeros(),
+                Vec3::new(0.8, 0.02, 0.4),
+            ),
+            mat_material,
+        );
+        let mat_id = ObjectId(scene.objects.len());
+        scene.objects.push(Box::new(welcome_mat));
+        scene.add_interactive(
+            mat_id,
+            crate::core::interaction::InteractiveKind::CafeEntrance,
+        );
+
         let clues = [0, 1, 2].map(|i| interactive_id(&scene, InteractiveKind::Clue(i)));
         let door = interactive_id(&scene, InteractiveKind::BackDoor);
         assert!(!scene.toggle_secret_room());
