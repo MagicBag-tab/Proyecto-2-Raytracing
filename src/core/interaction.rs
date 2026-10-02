@@ -39,6 +39,7 @@ pub enum InteractiveKind {
     Clue(usize),
     BackDoor,
     Movable,
+    CafeEntrance,
 }
 
 #[derive(Debug, Default)]
@@ -46,6 +47,7 @@ pub struct GameState {
     pub clues_found: [bool; 3],
     pub door_unlocked: bool,
     pub secret_room_open: bool,
+    pub inside_cafe: bool,
     pub selected_object: Option<ObjectId>,
 }
 

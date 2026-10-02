@@ -271,6 +271,10 @@ impl Scene {
         }
     }
 
+    pub fn add_interactive(&mut self, id: ObjectId, kind: crate::core::interaction::InteractiveKind) {
+        self.interactive_objects.insert(id, kind);
+    }
+
     pub fn is_object_visible(&self, id: ObjectId) -> bool {
         if self.game_state.secret_room_open {
             self.secret_room_objects.contains(&id) || self.door_objects.contains(&id)
@@ -296,6 +300,11 @@ impl Scene {
         }
         self.refresh_visibility();
         true
+    }
+
+    pub fn toggle_cafe_interior(&mut self) -> bool {
+        self.game_state.inside_cafe = !self.game_state.inside_cafe;
+        self.game_state.inside_cafe
     }
 
     pub fn toggle_secret_room(&mut self) -> bool {
@@ -343,7 +352,7 @@ impl Scene {
                         _ => false,
                     }
             }
-            InteractiveKind::BackDoor | InteractiveKind::Movable => true,
+            InteractiveKind::BackDoor | InteractiveKind::Movable | InteractiveKind::CafeEntrance => true,
         }
     }
 

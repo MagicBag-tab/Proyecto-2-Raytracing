@@ -133,7 +133,7 @@ pub fn shade(intersect: &Intersect, ray_origin: &Vec3, scene: &Scene, render_mod
         let drop_tint = Color::new(255, 255, 255) * (0.03 * blend_factor);
 
         let bottom_factor = (-water_normal_mapped.y).max(0.0);
-        let bottom_shadow = 1.0 - (bottom_factor * 0.4 * blend_factor); // 0.4 controla quÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© tan oscura es
+        let bottom_shadow = 1.0 - (bottom_factor * 0.4 * blend_factor); // 0.4 controla que tan oscura es
 
         diffuse_color = (diffuse_color * bottom_shadow) + drop_tint;
     }
@@ -932,16 +932,13 @@ fn main() {
         let day = scene.day_count;
         let phase = match scene.day_phase {
             DayPhase::Dawn => "Amanecer",
-            DayPhase::Day => "DÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­a",
+            DayPhase::Day => "Día",
             DayPhase::Sunset => "Atardecer",
             DayPhase::Night => "Noche",
         };
         let clues = scene.game_state.clues_count();
         let clue_str = format!(" | PISTAS {}/3", clues);
-        format!(
-            "La Puerta Trasera ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â DÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂA {} ({}){}",
-            day, phase, clue_str
-        )
+        format!("La Puerta Trasera - DÍA {} ({}){}", day, phase, clue_str)
     };
 
     window.set_title(&get_title(&scene));
@@ -1024,7 +1021,7 @@ fn main() {
                 camera_moved = true;
                 window.set_title(&get_title(&scene));
                 println!(
-                    "Acceso directo F12: habitaciÃƒÂ³n {}.",
+                    "Acceso directo F12: habitación {} abierta.",
                     if scene.game_state.secret_room_open {
                         "abierta"
                     } else {
@@ -1389,7 +1386,7 @@ mod story_tests {
         pick_near(&scene, Vec3::new(2.6, 0.38, 1.1), clues[2]);
         assert!(scene.discover_clue(clues[2]));
         assert_eq!(scene.game_state.clues_count(), 3);
-        scene.camera = test_camera();
+        scene.camera = create_camera();
         // pick_near(&scene, Vec3::new(2.5, 0.125, -1.5), door);
         println!("CLUE 0: {:?}", clues[0]);
         println!("CLUE 1: {:?}", clues[1]);
