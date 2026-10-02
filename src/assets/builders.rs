@@ -1167,12 +1167,12 @@ pub fn build_secret_room_interior(
     // -- MATERIALS --
     let mut wall = materials.stone.clone();
     wall.texture = Some(Arc::new(Texture::load_or_procedural(
-        "assets/paredes/pared_sótano.png",
+        "assets/paredes/pared_sÃƒÂ³tano.png",
         ProceduralTexture::Stone,
     )));
 
-    let mut dark_wood = materials.dark_wood.clone();
-    let mut wood = materials.wood.clone();
+    let dark_wood = materials.dark_wood.clone();
+    let wood = materials.wood.clone();
 
     let mut tatami = materials.paper.clone();
     tatami.diffuse = Color::new(160, 170, 130);
@@ -1182,7 +1182,7 @@ pub fn build_secret_room_interior(
     gold.reflectivity = 0.6;
     gold.texture = None;
 
-    let mut red_seal = Material::new(Color::new(180, 40, 40)).with_albedo(0.9);
+    let red_seal = Material::new(Color::new(180, 40, 40)).with_albedo(0.9);
 
     let mut ceramic = materials.stone.clone();
     ceramic.diffuse = Color::new(220, 220, 210);
@@ -1194,7 +1194,7 @@ pub fn build_secret_room_interior(
     let mut mirror = materials.metal.clone().with_reflectivity(0.94);
     mirror.texture = None;
 
-    let glow = materials.warm_glow.clone().with_transparency(0.0, 1.0);
+    let _glow = materials.warm_glow.clone().with_transparency(0.0, 1.0);
     let paper_glow = materials
         .paper
         .clone()
@@ -1340,7 +1340,7 @@ pub fn build_secret_room_interior(
         .paper
         .clone()
         .with_texture(Arc::new(Texture::load_or_procedural(
-            "assets/objetos_textura/flores_jardín/cuadro_1.png",
+            "assets/objetos_textura/flores_jardÃƒÂ­n/cuadro_1.png",
             ProceduralTexture::Paper,
         )));
     append_primitive(
@@ -1568,12 +1568,12 @@ pub fn build_day2_flowers(position: Vec3, scale: f32, materials: &AssetMaterials
     let mut objects = Vec::new();
     let mut asagao = materials.paper.clone();
     asagao.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
-        "assets/objetos_textura/flores_jardín/asagao.png",
+        "assets/objetos_textura/flores_jardÃƒÂ­n/asagao.png",
         ProceduralTexture::Paper,
     )));
     let mut ayame = materials.paper.clone();
     ayame.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
-        "assets/objetos_textura/flores_jardín/ayame.png",
+        "assets/objetos_textura/flores_jardÃƒÂ­n/ayame.png",
         ProceduralTexture::Paper,
     )));
 
@@ -1606,7 +1606,7 @@ pub fn build_day3_decorations(
     let mut objects = Vec::new();
     let mut ceramica = materials.stone.clone();
     ceramica.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
-        "assets/objetos_textura/cerámica_1.png",
+        "assets/objetos_textura/cerÃƒÂ¡mica_1.png",
         ProceduralTexture::Paper,
     )));
     let mut maceta = materials.stone.clone();
@@ -1649,7 +1649,7 @@ pub fn build_day5_higanbana(position: Vec3, scale: f32, materials: &AssetMateria
     let mut objects = Vec::new();
     let mut higanbana = materials.paper.clone();
     higanbana.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
-        "assets/objetos_textura/flores_jardín/higanbana.png",
+        "assets/objetos_textura/flores_jardÃƒÂ­n/higanbana.png",
         ProceduralTexture::Paper,
     )));
 
@@ -1669,7 +1669,7 @@ pub fn build_day6_clue(position: Vec3, scale: f32, materials: &AssetMaterials) -
     let mut objects = Vec::new();
     let mut mat = materials.paper.clone();
     mat.texture = Some(std::sync::Arc::new(Texture::load_or_procedural(
-        "assets/objetos_textura/flores_jardín/cuadro_1.png",
+        "assets/objetos_textura/flores_jardÃƒÂ­n/cuadro_1.png",
         ProceduralTexture::Paper,
     )));
     // Plaque near the right lantern
@@ -1700,68 +1700,161 @@ pub fn build_day7_clue(position: Vec3, scale: f32, materials: &AssetMaterials) -
     objects
 }
 
-
 pub fn build_torii_gate(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
     let mut objects = Vec::new();
     let mut red_wood = materials.wood.clone();
     red_wood.diffuse = Color::new(200, 50, 40);
     red_wood.texture = None;
-    
+
     let mut dark = materials.wood.clone();
     dark.diffuse = Color::new(40, 20, 15);
     dark.texture = None;
 
     // Pillars
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(-1.2, 0.7, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(0.12, 1.4, 0.12), scale), &red_wood);
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(1.2, 0.7, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(0.12, 1.4, 0.12), scale), &red_wood);
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(-1.2, 0.7, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.12, 1.4, 0.12), scale),
+        &red_wood,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(1.2, 0.7, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.12, 1.4, 0.12), scale),
+        &red_wood,
+    );
 
     // Pillar bases
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(-1.2, 0.1, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(0.16, 0.2, 0.16), scale), &dark);
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(1.2, 0.1, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(0.16, 0.2, 0.16), scale), &dark);
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(-1.2, 0.1, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.16, 0.2, 0.16), scale),
+        &dark,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(1.2, 0.1, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.16, 0.2, 0.16), scale),
+        &dark,
+    );
 
     // Top beam (Kasagi)
-    append_primitive(&mut objects, Box::new(Cube), scaled_position(position, Vec3::new(0.0, 1.4, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(3.0, 0.15, 0.2), scale), &red_wood);
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 1.4, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(3.0, 0.15, 0.2), scale),
+        &red_wood,
+    );
     // Top roof accent
-    append_primitive(&mut objects, Box::new(Cube), scaled_position(position, Vec3::new(0.0, 1.48, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(3.2, 0.05, 0.22), scale), &dark);
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 1.48, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(3.2, 0.05, 0.22), scale),
+        &dark,
+    );
 
     // Second beam (Nuki)
-    append_primitive(&mut objects, Box::new(Cube), scaled_position(position, Vec3::new(0.0, 1.05, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(2.8, 0.1, 0.1), scale), &red_wood);
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 1.05, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(2.8, 0.1, 0.1), scale),
+        &red_wood,
+    );
 
     // Center tie (Gaku-zuka)
-    append_primitive(&mut objects, Box::new(Cube), scaled_position(position, Vec3::new(0.0, 1.22, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(0.1, 0.25, 0.12), scale), &red_wood);
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(0.0, 1.22, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.1, 0.25, 0.12), scale),
+        &red_wood,
+    );
 
     objects
 }
 
 pub fn build_tsukubai(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
     let mut objects = Vec::new();
-    
+
     // Main stone basin
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(0.0, 0.2, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(0.3, 0.3, 0.3), scale), &materials.stone);
-    
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(0.0, 0.2, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.3, 0.3, 0.3), scale),
+        &materials.stone,
+    );
+
     // Hollow center (dark water)
     let mut water = materials.stone.clone();
     water.diffuse = Color::new(20, 30, 40);
     water.reflectivity = 0.8;
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(0.0, 0.35, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(0.2, 0.05, 0.2), scale), &water);
-    
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(0.0, 0.35, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.2, 0.05, 0.2), scale),
+        &water,
+    );
+
     // Bamboo spout
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(0.0, 0.45, -0.4), scale), Vec3::zeros(), scaled_size(Vec3::new(0.03, 0.5, 0.03), scale), &materials.bamboo);
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(0.0, 0.65, -0.2), scale), Vec3::new(1.57, 0.0, 0.0), scaled_size(Vec3::new(0.02, 0.3, 0.02), scale), &materials.bamboo);
-    
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(0.0, 0.45, -0.4), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.03, 0.5, 0.03), scale),
+        &materials.bamboo,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(0.0, 0.65, -0.2), scale),
+        Vec3::new(1.57, 0.0, 0.0),
+        scaled_size(Vec3::new(0.02, 0.3, 0.02), scale),
+        &materials.bamboo,
+    );
+
     // Water stream
     let mut stream = materials.glass.clone();
     stream.diffuse = Color::new(200, 220, 255);
     stream.transparency = 0.5;
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(0.0, 0.5, 0.0), scale), Vec3::zeros(), scaled_size(Vec3::new(0.01, 0.3, 0.01), scale), &stream);
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(0.0, 0.5, 0.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.01, 0.3, 0.01), scale),
+        &stream,
+    );
 
     objects
 }
 
-
-pub fn build_back_garden_plants(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
+pub fn build_back_garden_plants(
+    position: Vec3,
+    scale: f32,
+    materials: &AssetMaterials,
+) -> Vec<Object> {
     let mut objects = Vec::new();
-    
+
     // Several bushes at the back (Z from -3.5 to -7.5)
     for (x, z, r) in [
         (-3.0, -4.5, 0.6),
@@ -1779,17 +1872,17 @@ pub fn build_back_garden_plants(position: Vec3, scale: f32, materials: &AssetMat
             Box::new(Sphere),
             scaled_position(position, Vec3::new(x, 0.1 + r * 0.4, z), scale),
             Vec3::zeros(),
-            scaled_size(Vec3::new(r, r*0.8, r), scale),
+            scaled_size(Vec3::new(r, r * 0.8, r), scale),
             &materials.foliage,
         );
-        
+
         // Add some blossoms on top of bushes
         append_primitive(
             &mut objects,
             Box::new(Sphere),
             scaled_position(position, Vec3::new(x + 0.1, 0.1 + r * 0.8, z + 0.1), scale),
             Vec3::zeros(),
-            scaled_size(Vec3::new(r*0.2, r*0.2, r*0.2), scale),
+            scaled_size(Vec3::new(r * 0.2, r * 0.2, r * 0.2), scale),
             &materials.blossom,
         );
         append_primitive(
@@ -1797,21 +1890,21 @@ pub fn build_back_garden_plants(position: Vec3, scale: f32, materials: &AssetMat
             Box::new(Sphere),
             scaled_position(position, Vec3::new(x - 0.15, 0.1 + r * 0.7, z - 0.1), scale),
             Vec3::zeros(),
-            scaled_size(Vec3::new(r*0.25, r*0.25, r*0.25), scale),
+            scaled_size(Vec3::new(r * 0.25, r * 0.25, r * 0.25), scale),
             &materials.blossom,
         );
     }
-    
+
     // Standalone flower patches on the ground (purple-ish)
     let mut flower_mat = materials.blossom.clone();
     flower_mat.diffuse = Color::new(200, 100, 220);
     flower_mat.texture = None;
-    
+
     // Add blue/cyan flowers
     let mut blue_flower = materials.blossom.clone();
     blue_flower.diffuse = Color::new(100, 150, 240);
     blue_flower.texture = None;
-    
+
     for (x, z, use_blue) in [
         (-2.0, -3.5, false),
         (0.5, -4.2, true),
@@ -1843,36 +1936,112 @@ pub fn build_back_garden_plants(position: Vec3, scale: f32, materials: &AssetMat
     objects
 }
 
-
 pub fn build_japanese_ruins(position: Vec3, scale: f32, materials: &AssetMaterials) -> Vec<Object> {
     let mut objects = Vec::new();
-    
+
     let mut aged_stone = materials.stone.clone();
     aged_stone.diffuse = Color::new(100, 105, 100);
-    
+
     let mut moss = materials.grass.clone();
     moss.diffuse = Color::new(60, 100, 40);
     moss.texture = None;
-    
+
     let mut aged_wood = materials.wood.clone();
     aged_wood.diffuse = Color::new(80, 70, 60);
 
     // Left Side Ruins (Broken Shrine Base)
-    append_primitive(&mut objects, Box::new(Cube), scaled_position(position, Vec3::new(-3.2, 0.15, -6.0), scale), Vec3::zeros(), scaled_size(Vec3::new(1.0, 0.1, 1.0), scale), &aged_stone);
-    append_primitive(&mut objects, Box::new(Cube), scaled_position(position, Vec3::new(-3.4, 0.25, -6.2), scale), Vec3::new(0.0, 0.2, 0.0), scaled_size(Vec3::new(0.6, 0.1, 0.6), scale), &aged_stone);
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(-3.4, 0.5, -6.2), scale), Vec3::zeros(), scaled_size(Vec3::new(0.12, 0.3, 0.12), scale), &aged_stone);
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(-2.8, 0.18, -5.6), scale), Vec3::new(1.4, 0.5, 0.0), scaled_size(Vec3::new(0.12, 0.4, 0.12), scale), &aged_stone);
-    append_primitive(&mut objects, Box::new(Sphere), scaled_position(position, Vec3::new(-3.1, 0.22, -5.8), scale), Vec3::zeros(), scaled_size(Vec3::new(0.2, 0.05, 0.2), scale), &moss);
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-3.2, 0.15, -6.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(1.0, 0.1, 1.0), scale),
+        &aged_stone,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(-3.4, 0.25, -6.2), scale),
+        Vec3::new(0.0, 0.2, 0.0),
+        scaled_size(Vec3::new(0.6, 0.1, 0.6), scale),
+        &aged_stone,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(-3.4, 0.5, -6.2), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.12, 0.3, 0.12), scale),
+        &aged_stone,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(-2.8, 0.18, -5.6), scale),
+        Vec3::new(1.4, 0.5, 0.0),
+        scaled_size(Vec3::new(0.12, 0.4, 0.12), scale),
+        &aged_stone,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        scaled_position(position, Vec3::new(-3.1, 0.22, -5.8), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.2, 0.05, 0.2), scale),
+        &moss,
+    );
 
     // Right Side Ruins (Fallen Wood/Stone)
-    append_primitive(&mut objects, Box::new(Cylinder), scaled_position(position, Vec3::new(3.0, 0.3, -6.5), scale), Vec3::new(0.3, 0.0, 0.2), scaled_size(Vec3::new(0.1, 0.4, 0.1), scale), &aged_wood);
-    append_primitive(&mut objects, Box::new(Cube), scaled_position(position, Vec3::new(2.4, 0.14, -6.0), scale), Vec3::new(0.1, 0.8, 0.0), scaled_size(Vec3::new(0.8, 0.08, 0.08), scale), &aged_wood);
-    append_primitive(&mut objects, Box::new(Cube), scaled_position(position, Vec3::new(2.8, 0.15, -5.5), scale), Vec3::new(0.0, 0.4, 0.0), scaled_size(Vec3::new(0.25, 0.15, 0.25), scale), &aged_stone);
-    append_primitive(&mut objects, Box::new(Sphere), scaled_position(position, Vec3::new(2.8, 0.25, -5.5), scale), Vec3::zeros(), scaled_size(Vec3::new(0.15, 0.06, 0.15), scale), &moss);
-    
+    append_primitive(
+        &mut objects,
+        Box::new(Cylinder),
+        scaled_position(position, Vec3::new(3.0, 0.3, -6.5), scale),
+        Vec3::new(0.3, 0.0, 0.2),
+        scaled_size(Vec3::new(0.1, 0.4, 0.1), scale),
+        &aged_wood,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(2.4, 0.14, -6.0), scale),
+        Vec3::new(0.1, 0.8, 0.0),
+        scaled_size(Vec3::new(0.8, 0.08, 0.08), scale),
+        &aged_wood,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(2.8, 0.15, -5.5), scale),
+        Vec3::new(0.0, 0.4, 0.0),
+        scaled_size(Vec3::new(0.25, 0.15, 0.25), scale),
+        &aged_stone,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        scaled_position(position, Vec3::new(2.8, 0.25, -5.5), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.15, 0.06, 0.15), scale),
+        &moss,
+    );
+
     // Half-buried stone lantern cap
-    append_primitive(&mut objects, Box::new(Cube), scaled_position(position, Vec3::new(1.5, 0.12, -7.0), scale), Vec3::new(0.5, 0.2, 0.1), scaled_size(Vec3::new(0.3, 0.05, 0.3), scale), &aged_stone);
-    append_primitive(&mut objects, Box::new(Sphere), scaled_position(position, Vec3::new(1.5, 0.15, -7.0), scale), Vec3::zeros(), scaled_size(Vec3::new(0.1, 0.05, 0.1), scale), &moss);
+    append_primitive(
+        &mut objects,
+        Box::new(Cube),
+        scaled_position(position, Vec3::new(1.5, 0.12, -7.0), scale),
+        Vec3::new(0.5, 0.2, 0.1),
+        scaled_size(Vec3::new(0.3, 0.05, 0.3), scale),
+        &aged_stone,
+    );
+    append_primitive(
+        &mut objects,
+        Box::new(Sphere),
+        scaled_position(position, Vec3::new(1.5, 0.15, -7.0), scale),
+        Vec3::zeros(),
+        scaled_size(Vec3::new(0.1, 0.05, 0.1), scale),
+        &moss,
+    );
 
     objects
 }

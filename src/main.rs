@@ -21,9 +21,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::assets::{
-    build_bamboo_cluster, build_base_diorama, build_cafe_patio, build_japanese_cafe,
-    build_rock_garden, build_sakura_tree_variant, build_secret_room_interior, build_toro_lantern, build_torii_gate, build_tsukubai, build_path, build_back_garden_plants, build_japanese_ruins,
-    AssetMaterials,
+    build_back_garden_plants, build_bamboo_cluster, build_base_diorama, build_cafe_patio,
+    build_japanese_cafe, build_japanese_ruins, build_path, build_rock_garden,
+    build_sakura_tree_variant, build_secret_room_interior, build_torii_gate, build_toro_lantern,
+    build_tsukubai, AssetMaterials,
 };
 use crate::core::camera::Camera;
 use crate::core::framebuffer::Framebuffer;
@@ -132,7 +133,7 @@ pub fn shade(intersect: &Intersect, ray_origin: &Vec3, scene: &Scene, render_mod
         let drop_tint = Color::new(255, 255, 255) * (0.03 * blend_factor);
 
         let bottom_factor = (-water_normal_mapped.y).max(0.0);
-        let bottom_shadow = 1.0 - (bottom_factor * 0.4 * blend_factor); // 0.4 controla quÃƒÆ’Ã‚Â© tan oscura es
+        let bottom_shadow = 1.0 - (bottom_factor * 0.4 * blend_factor); // 0.4 controla quÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© tan oscura es
 
         diffuse_color = (diffuse_color * bottom_shadow) + drop_tint;
     }
@@ -369,13 +370,28 @@ fn create_scene(camera: Camera) -> Scene {
         build_base_diorama(Vec3::zeros(), 1.0, &materials),
     );
     append_asset(&mut objects, build_path(Vec3::zeros(), 1.0, &materials));
-    append_asset(&mut objects, build_torii_gate(Vec3::new(0.0, 0.0, 2.6), 1.2, &materials));
-    append_asset(&mut objects, build_tsukubai(Vec3::new(-2.2, 0.0, 1.2), 0.8, &materials));
-    append_asset(&mut objects, build_tsukubai(Vec3::new(2.4, 0.0, -0.5), 0.7, &materials));
-    append_asset(&mut objects, build_back_garden_plants(Vec3::zeros(), 1.0, &materials));
-    append_asset(&mut objects, build_japanese_ruins(Vec3::zeros(), 1.0, &materials));
+    append_asset(
+        &mut objects,
+        build_torii_gate(Vec3::new(0.0, 0.0, 2.6), 1.2, &materials),
+    );
+    append_asset(
+        &mut objects,
+        build_tsukubai(Vec3::new(-2.2, 0.0, 1.2), 0.8, &materials),
+    );
+    append_asset(
+        &mut objects,
+        build_tsukubai(Vec3::new(2.4, 0.0, -0.5), 0.7, &materials),
+    );
+    append_asset(
+        &mut objects,
+        build_back_garden_plants(Vec3::zeros(), 1.0, &materials),
+    );
+    append_asset(
+        &mut objects,
+        build_japanese_ruins(Vec3::zeros(), 1.0, &materials),
+    );
 
-    // ================= CAFÃƒÆ’Ã¢â‚¬Â° =================
+    // ================= CAFÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â° =================
     let cafe_pos = Vec3::new(0.5, 0.0, -1.0);
     append_asset(&mut objects, build_japanese_cafe(cafe_pos, 1.0, &materials));
     append_asset(
@@ -608,34 +624,10 @@ fn secret_room_camera() -> Camera {
     )
 }
 
-fn exterior_camera() -> Camera {
-    Camera::new(
-        Vec3::new(-6.0, 3.5, 6.0),
-        Vec3::new(0.0, 0.0, -1.0),
-        Vec3::y(),
-    )
-}
-
 fn cafe_camera() -> Camera {
     Camera::new(
         Vec3::new(-3.5, 1.2, 3.5),
         Vec3::new(0.0, 0.6, 0.0),
-        Vec3::y(),
-    )
-}
-
-fn trapdoor_camera() -> Camera {
-    Camera::new(
-        Vec3::new(4.5, 2.5, 2.0),
-        Vec3::new(2.5, 0.0, -1.5),
-        Vec3::y(),
-    )
-}
-
-fn test_camera() -> Camera {
-    Camera::new(
-        Vec3::new(0.0, 3.0, 1.0),
-        Vec3::new(2.5, 0.125, -1.5),
         Vec3::y(),
     )
 }
@@ -848,6 +840,19 @@ fn main() {
         );
         return;
     }
+    if test_mode.as_deref() == Some("--render-cafe") {
+        let mut scene = create_scene(cafe_camera());
+        scene.set_story_day(1);
+        scene.set_day_phase(crate::core::scene::DayPhase::Night);
+        let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+        render(&mut framebuffer, &scene, 0);
+        match save_test_render(&framebuffer, "target/cafe-test.png") {
+            Ok(()) => println!("Saved day 1 cafe view to target/cafe-test.png"),
+            Err(error) => eprintln!("Could not save renderer test: {}", error),
+        }
+        return;
+    }
+
     if test_mode.as_deref() == Some("--render-secret-room") {
         let mut scene = create_scene(secret_room_camera());
         scene.set_story_day(7);
@@ -856,16 +861,22 @@ fn main() {
         }
         assert!(scene.toggle_secret_room());
         scene.skybox = crate::core::scene::Skybox::new(Color::new(0, 0, 0));
-        
-        let mut void_mat = Material::new(Color::new(0,0,0));
+
+        let mut void_mat = Material::new(Color::new(0, 0, 0));
         void_mat.diffuse = Color::new(0, 0, 0);
         void_mat.texture = None;
-        scene.objects.push(Box::new(crate::core::object::Object::new(
-            Box::new(crate::shapes::cube::Cube),
-            Transform::new(Vec3::new(2.5, 0.0, 0.0), Vec3::zeros(), Vec3::new(30.0, 30.0, 30.0)),
-            void_mat,
-        )));
-        
+        scene
+            .objects
+            .push(Box::new(crate::core::object::Object::new(
+                Box::new(crate::shapes::cube::Cube),
+                Transform::new(
+                    Vec3::new(2.5, 0.0, 0.0),
+                    Vec3::zeros(),
+                    Vec3::new(30.0, 30.0, 30.0),
+                ),
+                void_mat,
+            )));
+
         let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
         render(&mut framebuffer, &scene, 0);
         crate::core::hud::draw(&mut framebuffer, &scene);
@@ -899,7 +910,7 @@ fn main() {
     let frame_delay = Duration::from_millis(16);
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let mut window = Window::new(
-        "La Puerta Trasera | DÃƒÆ’Ã‚Â­a 1",
+        "La Puerta Trasera | DÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­a 1",
         WIDTH,
         HEIGHT,
         WindowOptions::default(),
@@ -921,13 +932,16 @@ fn main() {
         let day = scene.day_count;
         let phase = match scene.day_phase {
             DayPhase::Dawn => "Amanecer",
-            DayPhase::Day => "DÃƒÆ’Ã‚Â­a",
+            DayPhase::Day => "DÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­a",
             DayPhase::Sunset => "Atardecer",
             DayPhase::Night => "Noche",
         };
         let clues = scene.game_state.clues_count();
         let clue_str = format!(" | PISTAS {}/3", clues);
-        format!("La Puerta Trasera ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â DÃƒÆ’Ã‚ÂA {} ({}){}", day, phase, clue_str)
+        format!(
+            "La Puerta Trasera ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â DÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂA {} ({}){}",
+            day, phase, clue_str
+        )
     };
 
     window.set_title(&get_title(&scene));
@@ -1010,7 +1024,7 @@ fn main() {
                 camera_moved = true;
                 window.set_title(&get_title(&scene));
                 println!(
-                    "Acceso directo F12: habitación {}.",
+                    "Acceso directo F12: habitaciÃƒÂ³n {}.",
                     if scene.game_state.secret_room_open {
                         "abierta"
                     } else {
